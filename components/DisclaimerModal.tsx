@@ -9,11 +9,12 @@ interface DisclaimerModalProps {
 const DisclaimerModal: React.FC<DisclaimerModalProps> = ({ isOpen, onAccept }) => {
   return (
     <Modal isOpen={isOpen} onClose={onAccept} title="Welcome to Olive">
-      <div className="space-y-4 text-olive-light">
+      <div className="space-y-4 text-olive-deep">
+        <p className="text-calm-blue text-center -mt-2 mb-4">Your well-being is our priority.</p>
         <p>
           Olive is designed to be a supportive companion for mental wellness, providing evidence-based coping skills.
         </p>
-        <p className="font-bold text-olive-mint">
+        <p className="font-bold text-olive-sage">
           However, Olive is not a clinician or a replacement for professional medical advice, diagnosis, or treatment. It does not diagnose or prescribe.
         </p>
         <p>
@@ -21,7 +22,7 @@ const DisclaimerModal: React.FC<DisclaimerModalProps> = ({ isOpen, onAccept }) =
         </p>
         <button
           onClick={onAccept}
-          className="w-full mt-4 bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300"
+          className="w-full mt-4 bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-300"
         >
           I Understand & Acknowledge
         </button>

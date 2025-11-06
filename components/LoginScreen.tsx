@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Modal from './Modal';
 import { User } from '../types';
 import * as supabaseService from '../services/supabaseService';
+import BackgroundPattern from './BackgroundPattern';
 
 interface LoginScreenProps {
   onLogin: (user: User) => void;
@@ -40,34 +41,37 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-olive-deep text-olive-light p-4 animate-fade-in">
-      <div className="w-full max-w-sm text-center animate-slide-in-up">
-        {error && <p className="text-red-400 mb-4">{error}</p>}
+    <div className="relative flex flex-col items-center justify-center h-screen bg-gradient-to-br from-olive-pale-sage to-olive-sage text-olive-accent p-4 animate-fade-in overflow-hidden">
+      <BackgroundPattern />
+      <div className="w-full max-w-sm text-center animate-slide-in-up z-10">
+        <h2 className="text-2xl font-semibold text-olive-deep mb-8">Your safe space awaits.</h2>
+        
+        {error && <p className="text-red-600 mb-4">{error}</p>}
 
         <div className="space-y-4">
-          <button onClick={handleGoogleLogin} disabled={isLoading} className="w-full bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 disabled:bg-gray-500">
+          <button onClick={handleGoogleLogin} disabled={isLoading} className="w-full bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 disabled:bg-gray-500">
             {isLoading ? 'Logging in...' : 'Continue with Google'}
           </button>
-          <button onClick={() => setLoginModalOpen(true)} disabled={isLoading} className="w-full bg-transparent border border-olive-sage hover:bg-olive-sage text-olive-light font-bold py-3 px-4 rounded-lg transition-colors duration-300">
+          <button onClick={() => setLoginModalOpen(true)} disabled={isLoading} className="w-full bg-white/40 border border-olive-sage/50 hover:bg-white/80 text-olive-deep font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105">
             Login with Email
           </button>
         </div>
         
         <p className="mt-8">
           New here?{' '}
-          <button onClick={() => setSignupModalOpen(true)} className="font-bold text-olive-mint hover:underline">
+          <button onClick={() => setSignupModalOpen(true)} className="font-bold text-olive-deep hover:underline">
             Create an Account
           </button>
         </p>
       </div>
 
-      <p className="absolute bottom-8 text-olive-sage/50 text-lg tracking-widest">Olive</p>
+      <p className="absolute bottom-8 text-olive-deep/50 text-lg tracking-widest">Olive</p>
 
       <Modal isOpen={isLoginModalOpen} onClose={() => setLoginModalOpen(false)} title="Login">
          <form className="space-y-4" onSubmit={handleEmailLogin}>
-            <input type="email" placeholder="Email" className="w-full p-3 bg-olive-accent border border-olive-sage rounded-md text-olive-light focus:ring-2 focus:ring-olive-mint focus:outline-none" />
-            <input type="password" placeholder="Password" className="w-full p-3 bg-olive-accent border border-olive-sage rounded-md text-olive-light focus:ring-2 focus:ring-olive-mint focus:outline-none" />
-            <button type="submit" disabled={isLoading} className="w-full bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 disabled:bg-gray-500">
+            <input type="email" placeholder="Email" className="w-full p-3 bg-white/60 border border-olive-sage/50 rounded-lg text-olive-deep placeholder-olive-deep/60 focus:ring-2 focus:ring-olive-deep focus:outline-none transition" />
+            <input type="password" placeholder="Password" className="w-full p-3 bg-white/60 border border-olive-sage/50 rounded-lg text-olive-deep placeholder-olive-deep/60 focus:ring-2 focus:ring-olive-deep focus:outline-none transition" />
+            <button type="submit" disabled={isLoading} className="w-full bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-300 disabled:bg-gray-500">
               {isLoading ? 'Logging in...' : 'Log In'}
             </button>
         </form>
@@ -76,22 +80,22 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       {/* Signup Modal */}
       <Modal isOpen={isSignupModalOpen} onClose={() => setSignupModalOpen(false)} title="Create Account">
         <div className="space-y-4">
-          <button onClick={handleGoogleLogin} disabled={isLoading} className="w-full bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 disabled:bg-gray-500">
+          <button onClick={handleGoogleLogin} disabled={isLoading} className="w-full bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-300 disabled:bg-gray-500">
               {isLoading ? '...' : 'Sign up with Google'}
           </button>
 
           <div className="flex items-center">
-              <hr className="flex-grow border-t border-olive-sage/50" />
-              <span className="px-3 text-gray-400">OR</span>
-              <hr className="flex-grow border-t border-olive-sage/50" />
+              <hr className="flex-grow border-t border-olive-sage/30" />
+              <span className="px-3 text-olive-deep/50">OR</span>
+              <hr className="flex-grow border-t border-olive-sage/30" />
           </div>
 
           <form className="space-y-4" onSubmit={handleEmailLogin}>
-              <input type="text" placeholder="Name" className="w-full p-3 bg-olive-accent border border-olive-sage rounded-md text-olive-light focus:ring-2 focus:ring-olive-mint focus:outline-none" />
-              <input type="email" placeholder="Email" className="w-full p-3 bg-olive-accent border border-olive-sage rounded-md text-olive-light focus:ring-2 focus:ring-olive-mint focus:outline-none" />
-              <input type="password" placeholder="Password" className="w-full p-3 bg-olive-accent border border-olive-sage rounded-md text-olive-light focus:ring-2 focus:ring-olive-mint focus:outline-none" />
-              <input type="password" placeholder="Confirm Password" className="w-full p-3 bg-olive-accent border border-olive-sage rounded-md text-olive-light focus:ring-2 focus:ring-olive-mint focus:outline-none" />
-              <button type="submit" disabled={isLoading} className="w-full bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 disabled:bg-gray-500">
+              <input type="text" placeholder="Name" className="w-full p-3 bg-white/60 border border-olive-sage/50 rounded-lg text-olive-deep placeholder-olive-deep/60 focus:ring-2 focus:ring-olive-deep focus:outline-none transition" />
+              <input type="email" placeholder="Email" className="w-full p-3 bg-white/60 border border-olive-sage/50 rounded-lg text-olive-deep placeholder-olive-deep/60 focus:ring-2 focus:ring-olive-deep focus:outline-none transition" />
+              <input type="password" placeholder="Password" className="w-full p-3 bg-white/60 border border-olive-sage/50 rounded-lg text-olive-deep placeholder-olive-deep/60 focus:ring-2 focus:ring-olive-deep focus:outline-none transition" />
+              <input type="password" placeholder="Confirm Password" className="w-full p-3 bg-white/60 border border-olive-sage/50 rounded-lg text-olive-deep placeholder-olive-deep/60 focus:ring-2 focus:ring-olive-deep focus:outline-none transition" />
+              <button type="submit" disabled={isLoading} className="w-full bg-olive-sage hover:bg-olive-mint hover:text-olive-accent text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-300 disabled:bg-gray-500">
                 {isLoading ? 'Creating...' : 'Create Account'}
               </button>
           </form>

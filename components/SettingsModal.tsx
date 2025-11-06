@@ -9,7 +9,7 @@ interface SettingsModalProps {
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   // A simple toggle switch component for UI demonstration
   const ToggleSwitch = ({ label, disabled = false }: { label: string; disabled?: boolean }) => (
-    <div className={`flex items-center justify-between p-3 rounded-lg ${disabled ? 'opacity-50' : ''}`}>
+    <div className={`flex items-center justify-between p-3 rounded-xl ${disabled ? 'opacity-50' : ''}`}>
       <span className="font-medium">{label}</span>
       <div className="relative inline-block w-12 h-6">
         <input type="checkbox" className="absolute w-0 h-0 opacity-0" disabled={disabled} />

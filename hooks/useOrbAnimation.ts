@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 // Color constants from Tailwind config
 const COLOR_SAGE = '#5E8C61';
 const COLOR_MINT = '#97C09E';
+const COLOR_BLUE = '#A7CAE3';
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -46,12 +47,21 @@ const useOrbAnimation = (
         const scale = 1 + smoothedAmplitude.current * 0.4;
         const radius = baseRadius * scale;
         
-        const speakingColor = isModelSpeaking ? COLOR_MINT : COLOR_SAGE;
+        const speakingColor = isModelSpeaking ? COLOR_BLUE : COLOR_SAGE;
         const idleColor = COLOR_SAGE;
         const orbColor = isSpeaking ? speakingColor : idleColor;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
+        // Glow effect
+        if (isSpeaking) {
+            ctx.shadowBlur = 10 + smoothedAmplitude.current * 40;
+            ctx.shadowColor = orbColor;
+        } else {
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = idleColor;
+        }
+
         // Outer, static ring
         ctx.beginPath();
         ctx.arc(centerX, centerY, baseRadius, 0, 2 * Math.PI);
@@ -72,6 +82,9 @@ const useOrbAnimation = (
         ctx.globalAlpha = isSpeaking ? 0.9 : 0.7;
 
         ctx.fill();
+        
+        // Reset shadow and alpha for next frame
+        ctx.shadowBlur = 0;
         ctx.globalAlpha = 1.0;
 
         animationFrameId = window.requestAnimationFrame(render);

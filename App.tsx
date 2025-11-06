@@ -53,8 +53,8 @@ const App: React.FC = () => {
     switch (screen) {
       case 'splash':
         return (
-          <div className={`flex flex-col items-center justify-center h-screen bg-olive-deep text-olive-light transition-opacity duration-500 ${isSplashFading ? 'opacity-0' : 'opacity-100'}`}>
-            <h1 className="text-5xl font-bold tracking-wider">Olive</h1>
+          <div className={`flex flex-col items-center justify-center h-screen bg-gradient-to-br from-olive-pale-sage to-olive-sage transition-opacity duration-500 ${isSplashFading ? 'opacity-0' : 'opacity-100'}`}>
+            <h1 className="text-5xl font-bold tracking-wider text-olive-deep">Olive</h1>
           </div>
         );
       case 'login':

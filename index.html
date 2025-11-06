@@ -8,13 +8,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
           extend: {
+            borderRadius: {
+              'xl': '1rem',
+              '2xl': '1.5rem',
+            },
             fontFamily: {
-              sans: ['Poppins', 'sans-serif'],
+              sans: ['Manrope', 'sans-serif'],
             },
             colors: {
               'olive-deep': '#1B3A2F',
@@ -22,6 +26,8 @@
               'olive-sage': '#5E8C61',
               'olive-mint': '#97C09E',
               'olive-light': '#F0F4F1',
+              'olive-pale-sage': '#BAC7B2',
+              'calm-blue': '#A7CAE3',
             },
             animation: {
               'fade-in': 'fadeIn 1s ease-in-out forwards',
@@ -58,7 +64,7 @@
 }
 </script>
 </head>
-  <body class="bg-olive-accent">
+  <body class="bg-olive-pale-sage">
     <div id="root"></div>
   </body>
 </html>

@@ -128,13 +128,13 @@ const VoiceView: React.FC = () => {
   }, [transcriptionHistory]);
 
   return (
-    <div className="flex flex-col h-full items-center justify-center p-4 relative overflow-hidden">
+    <div className="flex flex-col h-full items-center justify-center p-4 pt-20 relative overflow-hidden">
       <div className="flex-1 w-full max-w-2xl overflow-y-auto mb-4" ref={transcriptionContainerRef}>
         {transcriptionHistory.map((turn, index) => (
           <div key={index} className={`mb-4 ${turn.speaker === Speaker.User ? 'text-right' : 'text-left'}`}>
-            <div className={`inline-block p-3 rounded-lg max-w-lg ${
+            <div className={`inline-block p-3 rounded-xl shadow-md max-w-lg ${
                 turn.speaker === Speaker.User ? 'bg-olive-sage text-white' : 
-                turn.speaker === Speaker.Model ? 'bg-olive-accent text-olive-light' : 
+                turn.speaker === Speaker.Model ? 'bg-white text-olive-accent' : 
                 'bg-red-900 text-white text-center w-full'
             }`}>
               {turn.text}

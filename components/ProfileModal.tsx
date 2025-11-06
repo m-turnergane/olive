@@ -26,7 +26,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onLo
         </div>
         <button
           onClick={handleLogout}
-          className="w-full mt-4 bg-red-800 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300"
+          className="w-full mt-4 bg-red-800 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-300"
         >
           Log Out
         </button>
