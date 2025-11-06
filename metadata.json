@@ -1,0 +1,7 @@
+{
+  "name": "Olive",
+  "description": "Olive is a voice-first mental health companion designed to provide evidence-based coping skills through real-time, supportive conversations powered by Gemini.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
