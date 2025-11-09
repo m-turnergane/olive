@@ -17,7 +17,7 @@ This is the mobile version of Olive, migrated from Vite React web app to Expo Re
 - **Framework**: Expo SDK 54 with TypeScript
 - **Authentication**: Supabase (email/password, Google OAuth)
 - **AI/Chat**: Google Gemini 2.0 Flash
-- **Storage**: AsyncStorage, expo-secure-store
+- **Storage**: AsyncStorage (session persistence)
 - **UI**: React Native components with Linear Gradients
 - **State Management**: React Hooks
 
@@ -87,13 +87,32 @@ CREATE POLICY "Users can insert their own data"
   WITH CHECK (auth.uid() = id);
 ```
 
-### 3. Install Dependencies
+### 3. Google OAuth Configuration
+
+**In Supabase Dashboard:**
+
+1. Go to **Authentication** → **Providers** → **Google**
+2. Enable Google provider
+3. Add your Google Client ID and Client Secret
+4. Under **Redirect URLs**, add:
+   - For Expo Go: `https://auth.expo.io/@mgane/olive-expo`
+   - For production: `olive://auth/callback`
+
+**In Google Cloud Console:**
+
+1. Create OAuth 2.0 credentials (Web application type)
+2. Add authorized redirect URI: `https://YOUR-PROJECT.supabase.co/auth/v1/callback`
+3. Copy Client ID and Client Secret to Supabase
+
+**Important:** Do NOT add `exp://` or `olive://` URLs to Google Console. Google redirects to Supabase, which then redirects back to your app.
+
+### 4. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 4. Run the App
+### 5. Run the App
 
 For iOS simulator (macOS only):
 
@@ -142,8 +161,12 @@ olive-expo/
 │   ├── DisclaimerModal.tsx # Terms disclaimer
 │   └── BackgroundPattern.tsx # Decorative background
 │
+├── lib/                    # Core libraries
+│   ├── supabase.ts         # Supabase client (AsyncStorage + PKCE)
+│   └── googleOAuth.ts      # Google OAuth PKCE flow
+│
 ├── services/               # Service layer
-│   ├── supabaseService.ts  # Supabase auth & database
+│   ├── supabaseService.ts  # Auth helpers & database operations
 │   └── geminiService.ts    # Google Gemini AI integration
 │
 └── hooks/                  # Custom React hooks
@@ -160,17 +183,28 @@ The app supports two authentication methods:
 - Secure password validation (min 6 characters)
 - Automatic user record creation in Supabase
 
-### Google OAuth
+### Google OAuth (PKCE Flow)
 
-- One-click social login
-- Deep linking support for mobile
-- Automatic profile data sync
+- **PKCE OAuth** with `expo-auth-session` for secure mobile authentication
+- Works seamlessly in **Expo Go** (development) using AuthSession proxy
+- Automatic user profile creation from Google account data
+- No additional native SDKs required
+
+**How it works:**
+1. Uses `AuthSession.makeRedirectUri({ useProxy: true })` for Expo Go
+2. Opens Google sign-in in native browser via `AuthSession.startAsync()`
+3. Exchanges authorization code for session via `supabase.auth.exchangeCodeForSession()`
+
+**Supabase Configuration Required:**
+- Add `https://auth.expo.io/@mgane/olive-expo` to Supabase Redirect URLs (for Expo Go)
+- For production builds, add `olive://auth/callback`
 
 ### Session Management
 
-- Persistent sessions using expo-secure-store
+- Persistent sessions using **AsyncStorage**
 - Auto-login on app restart
-- Secure token refresh
+- Automatic token refresh
+- Session stored securely with Supabase client
 
 ## 💬 Chat Functionality
 
@@ -246,7 +280,7 @@ The app maintains the calming olive-green color scheme:
 ### Known Limitations
 
 1. **Voice Chat**: Not fully implemented on mobile (complex WebSocket + audio streaming)
-2. **Google OAuth**: Requires additional native config (Google Sign-In SDK)
+2. **Google OAuth**: Ensure Expo AuthSession proxy URL is added to Supabase Redirect URLs
 3. **Push Notifications**: Not implemented
 4. **Chat History**: Currently mock data (needs Supabase integration)
 5. **Settings**: Placeholder toggles (non-functional)

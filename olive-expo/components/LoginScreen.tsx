@@ -14,6 +14,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Modal from './Modal';
 import { User } from '../types';
 import * as supabaseService from '../services/supabaseService';
+import { signInWithGoogle } from '../lib/googleOAuth';
+import { supabase } from '../lib/supabase';
 import BackgroundPattern from './BackgroundPattern';
 
 interface LoginScreenProps {
@@ -36,14 +38,78 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     setIsLoading(true);
     setError(null);
     try {
-      const { user, error: authError } = await supabaseService.signInWithGoogle();
-      if (authError) {
-        setError(authError.message || 'Failed to log in with Google.');
-      } else if (user) {
-        onLogin(user);
+      // Use the new PKCE OAuth flow
+      const session = await signInWithGoogle();
+      
+      if (!session?.user) {
+        setError('No user data returned from Google.');
+        return;
       }
-    } catch (err) {
-      setError('Failed to log in. Please try again.');
+
+      // Fetch or create user record in database
+      const authUser = session.user;
+      
+      // Try to fetch existing user
+      const { data: userData, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      // If user doesn't exist, create them
+      if (fetchError && fetchError.code === 'PGRST116') {
+        const newUser = {
+          id: authUser.id,
+          email: authUser.email!,
+          name:
+            authUser.user_metadata?.name ||
+            authUser.user_metadata?.full_name ||
+            authUser.email?.split('@')[0] ||
+            'User',
+          photo_url:
+            authUser.user_metadata?.avatar_url ||
+            authUser.user_metadata?.picture ||
+            `https://api.dicebear.com/7.x/initials/png?seed=${authUser.email}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert(newUser);
+
+        if (insertError) {
+          console.error('Error creating user record:', insertError);
+        }
+
+        const user: User = {
+          id: newUser.id,
+          email: newUser.email,
+          name: newUser.name,
+          photoUrl: newUser.photo_url,
+        };
+
+        onLogin(user);
+      } else if (userData) {
+        // User exists, return it
+        const user: User = {
+          id: authUser.id,
+          email: authUser.email!,
+          name: userData.name || 'User',
+          photoUrl:
+            userData.photo_url ||
+            `https://api.dicebear.com/7.x/initials/png?seed=${userData.name}`,
+          created_at: userData.created_at,
+          updated_at: userData.updated_at,
+        };
+
+        onLogin(user);
+      } else {
+        setError('Failed to create or fetch user data.');
+      }
+    } catch (err: any) {
+      console.error('Google sign-in error:', err);
+      setError(err?.message || 'Failed to log in with Google. Please try again.');
     } finally {
       setIsLoading(false);
     }
