@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, Animated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from './components/LoginScreen';
@@ -16,11 +16,22 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Initialize app and check for existing session
     initializeApp();
   }, []);
+
+  useEffect(() => {
+    // Fade in animation when screen changes
+    fadeAnim.setValue(0);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, [screen]);
 
   const initializeApp = async () => {
     try {
@@ -102,18 +113,36 @@ export default function App() {
     switch (screen) {
       case 'splash':
         return (
-          <View style={styles.splashContainer}>
+          <Animated.View style={[styles.splashContainer, { opacity: fadeAnim }]}>
             <Text style={styles.splashText}>Olive</Text>
             {isLoading && <ActivityIndicator size="large" color="#1B3A2F" style={styles.loader} />}
-          </View>
+          </Animated.View>
         );
       case 'login':
-        return <LoginScreen onLogin={handleLogin} />;
+        return (
+          <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+            <LoginScreen onLogin={handleLogin} />
+          </Animated.View>
+        );
       case 'main':
-        if (!user) return <LoginScreen onLogin={handleLogin} />; // Safeguard
-        return <MainScreen user={user} onLogout={handleLogout} />;
+        if (!user) {
+          return (
+            <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+              <LoginScreen onLogin={handleLogin} />
+            </Animated.View>
+          );
+        }
+        return (
+          <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+            <MainScreen user={user} onLogout={handleLogout} />
+          </Animated.View>
+        );
       default:
-        return <LoginScreen onLogin={handleLogin} />;
+        return (
+          <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+            <LoginScreen onLogin={handleLogin} />
+          </Animated.View>
+        );
     }
   };
 
@@ -128,6 +157,9 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  screenContainer: {
     flex: 1,
   },
   splashContainer: {

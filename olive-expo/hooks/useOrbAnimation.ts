@@ -1,64 +1,34 @@
 import { useEffect, useRef } from 'react';
-import { Animated } from 'react-native';
 
 /**
- * Custom hook for orb animation using React Native Animated API
- * This is a simplified version that doesn't use Skia, suitable for React Native
+ * Custom hook for orb intensity calculation
+ * Maps audio amplitude to visual intensity for OliveOrb component
  */
 const useOrbAnimation = (
   amplitude: number,
   isSpeaking: boolean,
   isModelSpeaking: boolean
 ) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const opacityAnim = useRef(new Animated.Value(0.7)).current;
-  
   // Smoothed amplitude for smoother animations
   const smoothedAmplitude = useRef(0);
+  const intensityRef = useRef(0);
 
   useEffect(() => {
-    // Smooth the amplitude changes
-    smoothedAmplitude.current = smoothedAmplitude.current * 0.8 + amplitude * 0.2;
+    // Smooth the amplitude changes with exponential moving average
+    smoothedAmplitude.current = smoothedAmplitude.current * 0.7 + amplitude * 0.3;
 
-    if (isSpeaking) {
-      // Pulsing animation when speaking
-      const scale = 1 + smoothedAmplitude.current * 0.4;
-      const opacity = 0.7 + smoothedAmplitude.current * 0.3;
-
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: scale,
-          friction: 8,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: opacity,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]).start();
+    if (isSpeaking || isModelSpeaking) {
+      // Active speaking - higher intensity
+      intensityRef.current = Math.min(1, 0.3 + smoothedAmplitude.current * 0.7);
     } else {
-      // Return to idle state
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          friction: 8,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 0.7,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Idle - low intensity
+      intensityRef.current = 0.1;
     }
-  }, [amplitude, isSpeaking]);
+  }, [amplitude, isSpeaking, isModelSpeaking]);
 
   return {
-    scaleAnim,
-    opacityAnim,
+    intensity: intensityRef.current,
+    isUserSpeaking: isSpeaking,
     isModelSpeaking,
   };
 };

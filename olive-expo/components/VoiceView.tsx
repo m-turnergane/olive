@@ -1,20 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Animated,
-  Alert,
-} from 'react-native';
-import { TranscriptionTurn, Speaker } from '../types';
-import * as geminiService from '../services/geminiService';
-import useOrbAnimation from '../hooks/useOrbAnimation';
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, ScrollView, StyleSheet, Alert } from "react-native";
+import { TranscriptionTurn, Speaker } from "../types";
+import * as geminiService from "../services/geminiService";
+import useOrbAnimation from "../hooks/useOrbAnimation";
+import OliveOrb from "./OliveOrb";
 
 const VoiceView: React.FC = () => {
   const [micPermission, setMicPermission] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [transcriptionHistory, setTranscriptionHistory] = useState<TranscriptionTurn[]>([]);
+  const [transcriptionHistory, setTranscriptionHistory] = useState<
+    TranscriptionTurn[]
+  >([]);
   const [isModelSpeaking] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -26,11 +22,11 @@ const VoiceView: React.FC = () => {
   const isSomeoneSpeaking = isModelSpeaking || isUserSpeaking;
   const finalAmplitude = isModelSpeaking ? modelAmplitude : userAmplitude;
 
-  const { scaleAnim, opacityAnim, isModelSpeaking: animIsModelSpeaking } = useOrbAnimation(
-    finalAmplitude,
-    isSomeoneSpeaking,
-    isModelSpeaking
-  );
+  const {
+    intensity,
+    isUserSpeaking: animIsUserSpeaking,
+    isModelSpeaking: animIsModelSpeaking,
+  } = useOrbAnimation(finalAmplitude, isSomeoneSpeaking, isModelSpeaking);
 
   // Check for microphone permissions
   useEffect(() => {
@@ -41,16 +37,16 @@ const VoiceView: React.FC = () => {
     try {
       const hasPermission = await geminiService.requestAudioPermissions();
       setMicPermission(hasPermission);
-      
+
       if (!hasPermission) {
         Alert.alert(
-          'Microphone Permission Required',
-          'Please enable microphone access in your device settings to use voice chat.',
-          [{ text: 'OK' }]
+          "Microphone Permission Required",
+          "Please enable microphone access in your device settings to use voice chat.",
+          [{ text: "OK" }]
         );
       }
     } catch (error) {
-      console.error('Error checking mic permission:', error);
+      console.error("Error checking mic permission:", error);
     }
   };
 
@@ -76,9 +72,6 @@ const VoiceView: React.FC = () => {
     }
   }, [micPermission]);
 
-  // Determine orb color based on who is speaking
-  const orbColor = animIsModelSpeaking ? '#A7CAE3' : '#5E8C61';
-
   return (
     <View style={styles.container}>
       {/* Transcription History */}
@@ -90,7 +83,7 @@ const VoiceView: React.FC = () => {
         {transcriptionHistory.map((turn, index) => {
           const isUser = turn.speaker === Speaker.User;
           const isSystem = turn.speaker === Speaker.System;
-          
+
           return (
             <View
               key={index}
@@ -115,26 +108,13 @@ const VoiceView: React.FC = () => {
         })}
       </ScrollView>
 
-      {/* Animated Orb */}
+      {/* Jarvis-Style Animated Orb */}
       <View style={styles.orbContainer}>
-        <Animated.View
-          style={[
-            styles.orbOuter,
-            {
-              borderColor: orbColor,
-              opacity: isSomeoneSpeaking ? opacityAnim : 0.3,
-            },
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.orb,
-            {
-              backgroundColor: orbColor,
-              transform: [{ scale: scaleAnim }],
-              opacity: opacityAnim,
-            },
-          ]}
+        <OliveOrb
+          intensity={intensity}
+          isUserSpeaking={animIsUserSpeaking}
+          isModelSpeaking={animIsModelSpeaking}
+          size={320}
         />
       </View>
     </View>
@@ -144,7 +124,7 @@ const VoiceView: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    position: 'relative',
+    position: "relative",
   },
   transcriptionContainer: {
     flex: 1,
@@ -159,69 +139,51 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 16,
-    maxWidth: '80%',
-    shadowColor: '#000',
+    maxWidth: "80%",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.15,
     shadowRadius: 2,
     elevation: 2,
   },
   userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#5E8C61',
+    alignSelf: "flex-end",
+    backgroundColor: "#5E8C61",
   },
   modelBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFFFFF',
+    alignSelf: "flex-start",
+    backgroundColor: "#FFFFFF",
   },
   systemBubble: {
-    alignSelf: 'center',
-    backgroundColor: '#FEE2E2',
-    width: '90%',
-    maxWidth: '90%',
+    alignSelf: "center",
+    backgroundColor: "#FEE2E2",
+    width: "90%",
+    maxWidth: "90%",
   },
   transcriptionText: {
     fontSize: 16,
     lineHeight: 22,
-    color: '#0C221B',
+    color: "#0C221B",
   },
   userText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   systemText: {
-    color: '#DC2626',
-    textAlign: 'center',
+    color: "#DC2626",
+    textAlign: "center",
   },
   orbContainer: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: 200,
-    height: 200,
-    marginLeft: -100,
-    marginTop: -100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    pointerEvents: 'none',
-  },
-  orbOuter: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    borderWidth: 1,
-  },
-  orb: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    shadowColor: '#5E8C61',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 10,
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 320,
+    height: 320,
+    marginLeft: -160,
+    marginTop: -160,
+    justifyContent: "center",
+    alignItems: "center",
+    pointerEvents: "none",
   },
 });
 
 export default VoiceView;
-

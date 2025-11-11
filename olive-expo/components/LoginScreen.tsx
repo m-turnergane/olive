@@ -16,7 +16,6 @@ import { User } from '../types';
 import * as supabaseService from '../services/supabaseService';
 import { signInWithGoogle } from '../lib/googleOAuth';
 import { supabase } from '../lib/supabase';
-import BackgroundPattern from './BackgroundPattern';
 
 interface LoginScreenProps {
   onLogin: (user: User) => void;
@@ -56,37 +55,29 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         .eq('id', authUser.id)
         .single();
 
-      // If user doesn't exist, create them
+      // If user doesn't exist, create them using RPC
       if (fetchError && fetchError.code === 'PGRST116') {
-        const newUser = {
-          id: authUser.id,
+        const name =
+          authUser.user_metadata?.name ||
+          authUser.user_metadata?.full_name ||
+          authUser.email?.split('@')[0] ||
+          'User';
+        const photoUrl =
+          authUser.user_metadata?.avatar_url ||
+          authUser.user_metadata?.picture ||
+          `https://api.dicebear.com/7.x/initials/png?seed=${authUser.email}`;
+
+        const profileData = await supabaseService.ensureUserProfile({
           email: authUser.email!,
-          name:
-            authUser.user_metadata?.name ||
-            authUser.user_metadata?.full_name ||
-            authUser.email?.split('@')[0] ||
-            'User',
-          photo_url:
-            authUser.user_metadata?.avatar_url ||
-            authUser.user_metadata?.picture ||
-            `https://api.dicebear.com/7.x/initials/png?seed=${authUser.email}`,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert(newUser);
-
-        if (insertError) {
-          console.error('Error creating user record:', insertError);
-        }
+          name,
+          photoUrl,
+        });
 
         const user: User = {
-          id: newUser.id,
-          email: newUser.email,
-          name: newUser.name,
-          photoUrl: newUser.photo_url,
+          id: authUser.id,
+          email: authUser.email!,
+          name: profileData?.name || name,
+          photoUrl: profileData?.photo_url || photoUrl,
         };
 
         onLogin(user);
@@ -108,7 +99,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         setError('Failed to create or fetch user data.');
       }
     } catch (err: any) {
-      console.error('Google sign-in error:', err);
+      // Check if this is a cancellation - don't show error to user
+      const errorMessage = err?.message || String(err);
+      if (errorMessage === 'OAuth_CANCELLED' || errorMessage.includes('cancel')) {
+        // User cancelled - this is benign, just return silently
+        if (__DEV__) {
+          console.log('OAuth flow cancelled by user');
+        }
+        return;
+      }
+
+      // Log other errors in dev only
+      if (__DEV__) {
+        console.error('Google sign-in error:', err);
+      }
       setError(err?.message || 'Failed to log in with Google. Please try again.');
     } finally {
       setIsLoading(false);
@@ -188,8 +192,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       colors={['#BAC7B2', '#5E8C61']}
       style={styles.container}
     >
-      <BackgroundPattern />
-      
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}

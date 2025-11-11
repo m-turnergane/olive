@@ -83,6 +83,67 @@ const buildRedirectUri = (isExpoGo: boolean) => {
 };
 
 /**
+ * Helper function to ensure user profile exists using the user_upsert RPC
+ * This safely creates/updates user profiles without RLS violations
+ */
+export async function ensureUserProfile({
+  email,
+  name,
+  photoUrl,
+}: {
+  email: string;
+  name?: string | null;
+  photoUrl?: string | null;
+}): Promise<{
+  id: string;
+  email: string;
+  name: string | null;
+  photo_url: string | null;
+} | null> {
+  const { data, error } = await supabase
+    .rpc("user_upsert", {
+      p_email: email,
+      p_name: name ?? null,
+      p_photo_url: photoUrl ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    // Log quietly in dev; non-fatal for UX
+    if (__DEV__) {
+      console.warn("user_upsert RPC error", error);
+    }
+    return null;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  // Type assertion since RPC returns match the users table structure
+  return data as {
+    id: string;
+    email: string;
+    name: string | null;
+    photo_url: string | null;
+  };
+}
+
+/**
+ * Check if an email is already registered in the users table
+ */
+async function checkEmailExists(email: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", email.toLowerCase())
+    .single();
+
+  return !!data;
+}
+
+/**
  * Sign up with email and password
  */
 export const signUpWithEmail = async (
@@ -91,6 +152,10 @@ export const signUpWithEmail = async (
   name: string
 ): Promise<{ user: User | null; error: AuthError | null }> => {
   try {
+    // Check if email already exists in users table
+    const emailExists = await checkEmailExists(email);
+
+    // Proceed with signup
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -102,28 +167,83 @@ export const signUpWithEmail = async (
     });
 
     if (error) {
+      // If error is "User already registered" and email exists in our table,
+      // it's likely a Google account (since email accounts would have been caught earlier)
+      if (
+        (error.message.toLowerCase().includes("already registered") ||
+          error.message.toLowerCase().includes("user already exists")) &&
+        emailExists
+      ) {
+        const customError: AuthError = {
+          name: "AuthApiError",
+          message:
+            "This email is registered with Google. Please use 'Continue with Google', or sign in with Google and then add a password in Settings.",
+          status: 400,
+        } as AuthError;
+        return { user: null, error: customError };
+      }
+
+      // If email exists but signup error suggests it's an email account
+      if (
+        emailExists &&
+        error.message.toLowerCase().includes("already registered")
+      ) {
+        const customError: AuthError = {
+          name: "AuthApiError",
+          message: "This email is already registered. Please sign in instead.",
+          status: 400,
+        } as AuthError;
+        return { user: null, error: customError };
+      }
+
       return { user: null, error };
     }
 
-    if (data.user) {
-      // Create user record in users table
-      const { error: insertError } = await supabase.from("users").insert({
-        id: data.user.id,
-        email: data.user.email,
+    // If signup succeeded but email already exists in users table,
+    // it means Supabase linked accounts (email user added Google, or vice versa)
+    // In this case, we should update the profile instead of creating new one
+    if (data.user && emailExists) {
+      // Profile already exists, just update it with new name if provided
+      const photoUrl = `https://api.dicebear.com/7.x/initials/png?seed=${name}`;
+      const profileData = await ensureUserProfile({
+        email: data.user.email!,
         name,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        photoUrl,
       });
 
-      if (insertError) {
-        console.error("Error creating user record:", insertError);
-      }
+      // Fetch the updated user data
+      const { data: userData } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", data.user.id)
+        .single();
 
       const user: User = {
         id: data.user.id,
         email: data.user.email!,
-        name: name,
-        photoUrl: `https://api.dicebear.com/7.x/initials/png?seed=${name}`,
+        name: userData?.name || profileData?.name || name,
+        photoUrl: userData?.photo_url || profileData?.photo_url || photoUrl,
+        created_at: userData?.created_at,
+        updated_at: userData?.updated_at,
+      };
+
+      return { user, error: null };
+    }
+
+    if (data.user) {
+      // Ensure user profile exists using RPC (safe from RLS violations)
+      const photoUrl = `https://api.dicebear.com/7.x/initials/png?seed=${name}`;
+      const profileData = await ensureUserProfile({
+        email: data.user.email!,
+        name,
+        photoUrl,
+      });
+
+      const user: User = {
+        id: data.user.id,
+        email: data.user.email!,
+        name: profileData?.name || name,
+        photoUrl: profileData?.photo_url || photoUrl,
       };
 
       return { user, error: null };
@@ -131,7 +251,9 @@ export const signUpWithEmail = async (
 
     return { user: null, error: null };
   } catch (err) {
-    console.error("Sign up error:", err);
+    if (__DEV__) {
+      console.error("Sign up error:", err);
+    }
     return { user: null, error: err as AuthError };
   }
 };
@@ -257,7 +379,11 @@ export const signInWithGoogle = async (): Promise<{
     console.log("Auth session result:", result);
 
     if (result.type === "cancel" || result.type === "dismiss") {
-      return { user: null, error: new Error("Authentication cancelled") };
+      // User cancelled - this is benign, don't treat as an error
+      if (__DEV__) {
+        console.log("OAuth flow cancelled by user");
+      }
+      return { user: null, error: null };
     }
 
     if (result.type !== "success" || !result.url) {
@@ -332,8 +458,24 @@ export const signInWithGoogle = async (): Promise<{
     }
 
     return await createOrFetchUser(sessionUser);
-  } catch (err) {
-    console.error("Google sign in error:", err);
+  } catch (err: any) {
+    // Check if this is a cancel/dismiss error - treat as benign
+    const errorMessage = err?.message || String(err);
+    if (
+      errorMessage.includes("cancel") ||
+      errorMessage.includes("dismiss") ||
+      errorMessage.includes("ASWebAuthenticationSession error 1")
+    ) {
+      if (__DEV__) {
+        console.log("OAuth flow cancelled by user");
+      }
+      return { user: null, error: null };
+    }
+
+    // Log other errors in dev only
+    if (__DEV__) {
+      console.error("Google sign in error:", err);
+    }
     return { user: null, error: err as Error };
   }
 };
@@ -392,40 +534,34 @@ async function createOrFetchUser(authUser: SupabaseAuthUser): Promise<{
       console.error("Error fetching user data:", fetchError);
     }
 
-    // If user doesn't exist, create them
+    // If user doesn't exist, create them using RPC
     if (!userData) {
-      const newUser = {
-        id: authUser.id,
+      const name =
+        authUser.user_metadata?.name ||
+        authUser.user_metadata?.full_name ||
+        authUser.email?.split("@")[0] ||
+        "User";
+      const photoUrl =
+        authUser.user_metadata?.avatar_url ||
+        authUser.user_metadata?.picture ||
+        `https://api.dicebear.com/7.x/initials/png?seed=${authUser.email}`;
+
+      const profileData = await ensureUserProfile({
         email: authUser.email!,
-        name:
-          authUser.user_metadata?.name ||
-          authUser.user_metadata?.full_name ||
-          authUser.email?.split("@")[0] ||
-          "User",
-        photo_url:
-          authUser.user_metadata?.avatar_url ||
-          authUser.user_metadata?.picture ||
-          `https://api.dicebear.com/7.x/initials/png?seed=${authUser.email}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error: insertError } = await supabase
-        .from("users")
-        .insert(newUser);
-
-      if (insertError) {
-        console.error("Error creating user record:", insertError);
-      }
+        name,
+        photoUrl,
+      });
 
       const user: User = {
-        id: newUser.id,
-        email: newUser.email,
-        name: newUser.name,
-        photoUrl: newUser.photo_url,
+        id: authUser.id,
+        email: authUser.email!,
+        name: profileData?.name || name,
+        photoUrl: profileData?.photo_url || photoUrl,
       };
 
-      console.log("Created and returning new user:", user);
+      if (__DEV__) {
+        console.log("Created and returning new user:", user);
+      }
       return { user, error: null };
     }
 
@@ -555,7 +691,85 @@ export const updateUserProfile = async (
 
     return { error };
   } catch (err) {
-    console.error("Update profile error:", err);
+    if (__DEV__) {
+      console.error("Update profile error:", err);
+    }
     return { error: err as Error };
+  }
+};
+
+/**
+ * Set or update password for the current user
+ * Useful for Google OAuth users who want to add password authentication
+ */
+export const setPassword = async (
+  password: string
+): Promise<{ error: AuthError | null }> => {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password,
+    });
+
+    if (error) {
+      return { error };
+    }
+
+    return { error: null };
+  } catch (err) {
+    if (__DEV__) {
+      console.error("Set password error:", err);
+    }
+    return { error: err as AuthError };
+  }
+};
+
+/**
+ * Update password for the current user (requires old password verification)
+ * Note: Supabase doesn't require old password for updateUser({ password }),
+ * but you may want to verify it client-side for better UX
+ */
+export const updatePassword = async (
+  newPassword: string
+): Promise<{ error: AuthError | null }> => {
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      return { error };
+    }
+
+    return { error: null };
+  } catch (err) {
+    if (__DEV__) {
+      console.error("Update password error:", err);
+    }
+    return { error: err as AuthError };
+  }
+};
+
+/**
+ * Check if the current user has password authentication enabled
+ */
+export const hasPasswordAuth = async (): Promise<boolean> => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return false;
+    }
+
+    // Check if user has email provider (password auth)
+    // This is a heuristic - if user has email and confirmed_at, likely has password
+    // Google-only users won't have confirmed_at set via email confirmation
+    return !!(user.email && user.confirmed_at);
+  } catch (err) {
+    if (__DEV__) {
+      console.error("Check password auth error:", err);
+    }
+    return false;
   }
 };

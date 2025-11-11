@@ -45,10 +45,23 @@ export async function signInWithGoogle() {
 
   console.log("🌐 Opening OAuth URL:", data.url);
 
-  const callbackUrl = await openAuthSessionWithDeepLinkFallback(
-    data.url,
-    redirectTo
-  );
+  let callbackUrl: string;
+  try {
+    callbackUrl = await openAuthSessionWithDeepLinkFallback(
+      data.url,
+      redirectTo
+    );
+  } catch (err: any) {
+    // Check if this is a cancellation - treat as benign
+    const errorMessage = err?.message || String(err);
+    if (errorMessage === "OAuth_CANCELLED" || errorMessage.includes("cancel")) {
+      if (__DEV__) {
+        console.log("OAuth flow cancelled by user");
+      }
+      throw new Error("OAuth_CANCELLED");
+    }
+    throw err;
+  }
 
   console.log("🔗 Callback URL:", callbackUrl);
 
@@ -151,6 +164,13 @@ async function openAuthSessionWithDeepLinkFallback(
         listener.remove();
         if (result.type === "success" && "url" in result && result.url) {
           resolve(result.url);
+        } else if (result.type === "cancel" || result.type === "dismiss") {
+          // User cancelled - this is benign, resolve with a special marker
+          // The caller should check for this and handle gracefully
+          if (__DEV__) {
+            console.log("OAuth flow cancelled by user");
+          }
+          reject(new Error("OAuth_CANCELLED"));
         } else {
           reject(
             new Error(
@@ -167,7 +187,21 @@ async function openAuthSessionWithDeepLinkFallback(
         if (!completed) {
           completed = true;
           listener.remove();
-          reject(error);
+          // Check if this is a cancel error - treat as benign
+          const errorMessage = error?.message || String(error);
+          if (
+            errorMessage.includes("cancel") ||
+            errorMessage.includes("dismiss") ||
+            errorMessage.includes("ASWebAuthenticationSession error 1") ||
+            errorMessage === "OAuth_CANCELLED"
+          ) {
+            if (__DEV__) {
+              console.log("OAuth flow cancelled by user");
+            }
+            reject(new Error("OAuth_CANCELLED"));
+          } else {
+            reject(error);
+          }
         }
       });
   });

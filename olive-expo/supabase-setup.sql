@@ -15,32 +15,40 @@ CREATE TABLE IF NOT EXISTS public.users (
 -- 2. Enable Row Level Security
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
--- 3. Create RLS Policies for user isolation
+-- 3. Create RLS Policies for user isolation (Canonical Pattern)
 -- Drop existing policies first, then recreate (safe to run multiple times)
 
 DROP POLICY IF EXISTS "Users can view their own data" ON public.users;
-CREATE POLICY "Users can view their own data"
+DROP POLICY IF EXISTS "read_own_profile" ON public.users;
+CREATE POLICY "read_own_profile"
   ON public.users
   FOR SELECT
+  TO authenticated
   USING (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Users can insert their own data" ON public.users;
-CREATE POLICY "Users can insert their own data"
+DROP POLICY IF EXISTS "insert_own_profile" ON public.users;
+CREATE POLICY "insert_own_profile"
   ON public.users
   FOR INSERT
+  TO authenticated
   WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Users can update their own data" ON public.users;
-CREATE POLICY "Users can update their own data"
+DROP POLICY IF EXISTS "update_own_profile" ON public.users;
+CREATE POLICY "update_own_profile"
   ON public.users
   FOR UPDATE
+  TO authenticated
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Users can delete their own data" ON public.users;
-CREATE POLICY "Users can delete their own data"
+DROP POLICY IF EXISTS "delete_own_profile" ON public.users;
+CREATE POLICY "delete_own_profile"
   ON public.users
   FOR DELETE
+  TO authenticated
   USING (auth.uid() = id);
 
 -- 4. Create function to automatically update updated_at timestamp
@@ -53,6 +61,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 5. Create trigger to call the function on update
+DROP TRIGGER IF EXISTS set_updated_at ON public.users;
 CREATE TRIGGER set_updated_at
   BEFORE UPDATE ON public.users
   FOR EACH ROW
@@ -63,8 +72,42 @@ CREATE INDEX IF NOT EXISTS users_email_idx ON public.users(email);
 CREATE INDEX IF NOT EXISTS users_created_at_idx ON public.users(created_at);
 
 -- ============================================================================
--- Optional: Create a function to handle new user signup
+-- 7. Create security-definer RPC function for safe user upsert
+-- This allows clients to safely create/update user profiles without RLS violations
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.user_upsert(
+  p_email TEXT,
+  p_name TEXT DEFAULT NULL,
+  p_photo_url TEXT DEFAULT NULL
+) RETURNS public.users
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  u public.users;
+BEGIN
+  INSERT INTO public.users (id, email, name, photo_url)
+  VALUES (auth.uid(), p_email, p_name, p_photo_url)
+  ON CONFLICT (id) DO UPDATE SET
+    -- Keep existing non-empty name unless the row was blank
+    name = COALESCE(NULLIF(public.users.name, ''), excluded.name),
+    photo_url = COALESCE(excluded.photo_url, public.users.photo_url),
+    updated_at = NOW()
+  RETURNING * INTO u;
+  RETURN u;
+END;
+$$;
+
+-- Grant execute permission to authenticated users
+GRANT EXECUTE ON FUNCTION public.user_upsert(TEXT, TEXT, TEXT) TO authenticated;
+
+-- ============================================================================
+-- 8. Create a function to handle new user signup (Trigger-based)
 -- This ensures a user record is created when auth.users is created
+-- Note: The trigger handles initial creation, while user_upsert() can be used
+-- for manual updates. Both can coexist safely.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
