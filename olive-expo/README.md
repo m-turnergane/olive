@@ -6,7 +6,9 @@ This is the mobile version of Olive, migrated from Vite React web app to Expo Re
 
 - **Native Mobile Experience**: Full React Native implementation optimized for mobile
 - **Real Supabase Authentication**: Email/password and Google OAuth support
-- **Text-Based Chat**: Fully functional AI chat using Google Gemini API
+- **Streaming Chat with Persistence**: Real-time streaming from OpenAI GPT-5 nano with full conversation history
+- **Scope Gating**: AI classifier prevents out-of-scope topics (medical, legal, financial advice)
+- **Context-Aware**: Uses preferences and memories for personalized responses
 - **Voice Interface Placeholder**: UI structure ready for voice chat implementation
 - **Secure Token Storage**: Using expo-secure-store for authentication tokens
 - **Persistent Sessions**: Auto-login with Supabase session management
@@ -15,11 +17,13 @@ This is the mobile version of Olive, migrated from Vite React web app to Expo Re
 ## 🏗️ Tech Stack
 
 - **Framework**: Expo SDK 54 with TypeScript
-- **Authentication**: Supabase (email/password, Google OAuth)
-- **AI/Chat**: Google Gemini 2.0 Flash
+- **Authentication**: Supabase (email/password, Google OAuth, RLS)
+- **AI/Chat**: OpenAI GPT-5 nano via Supabase Edge Functions
+- **Database**: PostgreSQL (Supabase) with conversations, messages, memories
 - **Storage**: AsyncStorage (session persistence)
 - **UI**: React Native components with Linear Gradients
 - **State Management**: React Hooks
+- **Streaming**: Server-Sent Events (SSE) for real-time token streaming
 
 ## 📋 Prerequisites
 
@@ -29,7 +33,8 @@ Before you begin, ensure you have:
 2. **Expo CLI**: `npm install -g expo-cli`
 3. **Expo Go app** on your iOS/Android device (for testing)
 4. **Supabase Account**: [supabase.com](https://supabase.com)
-5. **Google Gemini API Key**: [ai.google.dev](https://ai.google.dev)
+5. **OpenAI API Key**: [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+6. **Supabase CLI** (optional, for Edge Functions): `brew install supabase/tap/supabase`
 
 ## 🚀 Setup Instructions
 
@@ -48,44 +53,40 @@ Edit `.env` with your actual values:
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 
-# Google OAuth (for web/mobile OAuth)
+# Google OAuth (optional - for Google sign-in)
 EXPO_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
-
-# Google Gemini API Key
-EXPO_PUBLIC_GEMINI_API_KEY=your-gemini-api-key
 ```
+
+**⚠️ Important**: OpenAI API key goes in **Supabase Edge Functions secrets**, NOT in client `.env`. This keeps your key secure server-side.
 
 ### 2. Supabase Database Setup
 
-Create the `users` table in your Supabase database:
+Run the SQL migrations to create tables for auth and chat persistence:
 
-```sql
--- Create users table
-CREATE TABLE users (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT UNIQUE NOT NULL,
-  name TEXT,
-  photo_url TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+**Step 1: Basic Setup (Users table)**
 
--- Enable Row Level Security
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+1. Go to Supabase Dashboard → SQL Editor → New Query
+2. Copy contents of `supabase/migrations/supabase-setup.sql`
+3. Run the query (creates `users` table with RLS)
 
--- Create policies
-CREATE POLICY "Users can view their own data"
-  ON users FOR SELECT
-  USING (auth.uid() = id);
+**Step 2: Chat Persistence (Conversations, Messages, Memories)**
 
-CREATE POLICY "Users can update their own data"
-  ON users FOR UPDATE
-  USING (auth.uid() = id);
+1. In SQL Editor, create a New Query
+2. Copy contents of `supabase/migrations/20251112000000_chat_schema.sql`
+3. Run the query
 
-CREATE POLICY "Users can insert their own data"
-  ON users FOR INSERT
-  WITH CHECK (auth.uid() = id);
-```
+This creates:
+
+- ✅ `conversations` - Chat sessions
+- ✅ `messages` - Chat history
+- ✅ `conversation_summaries` - Rolling context summaries
+- ✅ `user_memories` - Long-term user facts
+- ✅ `user_preferences` - User settings (nickname, pronouns, tone)
+- ✅ RPC functions: `create_conversation()`, `add_message()`
+
+**Verify**: Check Table Editor to see new tables with RLS enabled.
+
+📖 **Full Guide**: See `supabase/MIGRATION_GUIDE.md` for detailed instructions
 
 ### 3. Google OAuth Configuration
 
@@ -106,13 +107,38 @@ CREATE POLICY "Users can insert their own data"
 
 **Important:** Do NOT add `exp://` or `olive://` URLs to Google Console. Google redirects to Supabase, which then redirects back to your app.
 
-### 4. Install Dependencies
+### 4. Deploy Edge Functions
+
+Deploy Supabase Edge Functions for OpenAI streaming:
+
+```bash
+cd supabase
+
+# Deploy all functions at once
+./deploy-functions.sh
+
+# Or deploy individually
+supabase functions deploy chat-stream
+supabase functions deploy summarize
+supabase functions deploy gate
+```
+
+**Set OpenAI API Key (one-time)**:
+
+```bash
+supabase secrets set OPENAI_API_KEY=sk-proj-xxxxx
+supabase secrets set OPENAI_CHAT_MODEL=gpt-5-nano
+```
+
+📖 **Full Guide**: See `supabase/functions/README.md` for deployment details
+
+### 5. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 5. Run the App
+### 6. Run the App
 
 For iOS simulator (macOS only):
 
@@ -148,29 +174,46 @@ olive-expo/
 ├── tailwind.config.js      # Tailwind CSS config (NativeWind)
 ├── app.json                # Expo configuration
 │
-├── components/             # React Native components
-│   ├── icons/              # SVG icon components
-│   ├── LoginScreen.tsx     # Authentication screen
-│   ├── MainScreen.tsx      # Main app container
-│   ├── ChatView.tsx        # Text chat interface
-│   ├── VoiceView.tsx       # Voice interface (placeholder)
-│   ├── SideMenu.tsx        # Navigation drawer
-│   ├── ProfilePage.tsx     # User profile
-│   ├── SettingsPage.tsx    # App settings
-│   ├── Modal.tsx           # Generic modal component
-│   ├── DisclaimerModal.tsx # Terms disclaimer
+├── components/              # React Native components
+│   ├── icons/               # SVG icon components
+│   ├── LoginScreen.tsx      # Authentication screen
+│   ├── MainScreen.tsx       # Main app container
+│   ├── ChatView.tsx         # Streaming chat interface with persistence
+│   ├── PreferencesView.tsx  # User preferences editor
+│   ├── VoiceView.tsx        # Voice interface (placeholder)
+│   ├── SideMenu.tsx         # Navigation drawer
+│   ├── ProfilePage.tsx      # User profile
+│   ├── SettingsPage.tsx     # App settings
+│   ├── Modal.tsx            # Generic modal component
+│   ├── DisclaimerModal.tsx  # Terms disclaimer
 │   └── BackgroundPattern.tsx # Decorative background
 │
-├── lib/                    # Core libraries
-│   ├── supabase.ts         # Supabase client (AsyncStorage + PKCE)
-│   └── googleOAuth.ts      # Google OAuth PKCE flow
+├── lib/                     # Core libraries
+│   ├── supabase.ts          # Supabase client (AsyncStorage + PKCE)
+│   └── googleOAuth.ts       # Google OAuth PKCE flow
 │
-├── services/               # Service layer
-│   ├── supabaseService.ts  # Auth helpers & database operations
-│   └── geminiService.ts    # Google Gemini AI integration
+├── services/                # Service layer
+│   ├── supabaseService.ts   # Auth helpers & database operations
+│   ├── chatService.ts       # Chat persistence + streaming + scope gating
+│   └── geminiService.ts     # [Deprecated] Google Gemini (replaced by OpenAI)
 │
-└── hooks/                  # Custom React hooks
-    └── useOrbAnimation.ts  # Voice orb animation hook
+├── hooks/                   # Custom React hooks
+│   ├── useOrbAnimation.ts   # Voice orb animation hook
+│   └── useUserContextFacts.ts # Preferences + memories preview
+│
+├── utils/                   # Utility functions
+│   ├── sse.ts               # Server-Sent Events parser
+│   └── __tests__/           # Unit tests
+│       └── sse.test.ts      # SSE parser tests
+│
+└── supabase/                # Supabase configuration
+    ├── migrations/          # SQL migrations
+    │   ├── supabase-setup.sql
+    │   └── 20251112000000_chat_schema.sql
+    └── functions/           # Edge Functions (Deno)
+        ├── chat-stream/     # Streaming chat handler
+        ├── summarize/       # Conversation summarizer
+        └── gate/            # Scope classifier
 ```
 
 ## 🔐 Authentication
@@ -191,11 +234,13 @@ The app supports two authentication methods:
 - No additional native SDKs required
 
 **How it works:**
+
 1. Uses `AuthSession.makeRedirectUri({ useProxy: true })` for Expo Go
 2. Opens Google sign-in in native browser via `AuthSession.startAsync()`
 3. Exchanges authorization code for session via `supabase.auth.exchangeCodeForSession()`
 
 **Supabase Configuration Required:**
+
 - Add `https://auth.expo.io/@mgane/olive-expo` to Supabase Redirect URLs (for Expo Go)
 - For production builds, add `olive://auth/callback`
 
@@ -208,13 +253,36 @@ The app supports two authentication methods:
 
 ## 💬 Chat Functionality
 
-The text chat interface is fully functional:
+The chat interface features full persistence and streaming:
 
-- Real-time messaging with Google Gemini AI
-- Message history with FlatList for performance
-- Typing indicators
-- Error handling with user feedback
-- Smooth keyboard handling
+**✨ Features**:
+
+- **Streaming Responses**: Real-time token-by-token streaming from OpenAI GPT-5 nano
+- **Full Persistence**: All conversations and messages saved to Supabase
+- **Scope Gating**: Classifier filters out medical/legal/financial advice topics
+- **Context-Aware**: Uses conversation summaries, memories, and user preferences
+- **Optimistic Updates**: User messages appear immediately
+- **Error Handling**: Graceful fallbacks for network/API errors
+- **Conversation History**: Loads past messages on mount
+
+**How It Works**:
+
+1. User sends message → Scope check via `/gate` Edge Function (GPT-5 nano)
+2. If in-scope: Stream from `/chat-stream` → OpenAI GPT-5 nano
+3. If out-of-scope: Show empathetic deflection (no API call)
+4. Tokens stream progressively to UI
+5. Message persisted server-side automatically
+6. Rolling summary updated in background
+
+**Expected Behavior**:
+
+- ✅ First message creates conversation automatically
+- ✅ Streaming appears token-by-token (like ChatGPT)
+- ✅ Out-of-scope topics show yellow deflection message
+- ✅ History persists across app restarts
+- ✅ Context from past conversations used in responses
+
+📖 **Full Docs**: See `services/CHAT_SERVICE_USAGE.md` for API details
 
 ## 🎙️ Voice Interface (Placeholder)
 
@@ -263,7 +331,6 @@ The app maintains the calming olive-green color scheme:
 ```json
 {
   "@supabase/supabase-js": "^2.x",
-  "@google/generative-ai": "^0.x",
   "expo": "~54.0.22",
   "expo-av": "^16.0.7",
   "expo-linear-gradient": "^14.x",
@@ -275,6 +342,8 @@ The app maintains the calming olive-green color scheme:
 }
 ```
 
+**Note**: OpenAI client runs server-side via Supabase Edge Functions (not in app bundle)
+
 ## 🚨 Important Notes
 
 ### Known Limitations
@@ -282,16 +351,18 @@ The app maintains the calming olive-green color scheme:
 1. **Voice Chat**: Not fully implemented on mobile (complex WebSocket + audio streaming)
 2. **Google OAuth**: Ensure Expo AuthSession proxy URL is added to Supabase Redirect URLs
 3. **Push Notifications**: Not implemented
-4. **Chat History**: Currently mock data (needs Supabase integration)
-5. **Settings**: Placeholder toggles (non-functional)
+4. **Memory Extraction**: Currently manual (future: auto-extract from conversations)
+5. **Settings**: Some toggles placeholder (non-functional)
 
 ### Security Considerations
 
-- API keys stored in environment variables
-- Row-Level Security (RLS) enabled on Supabase
-- Secure token storage with expo-secure-store
-- HTTPS-only API calls
-- Input validation on auth forms
+- **OpenAI key server-side only** (Edge Functions secrets, never in client)
+- **Row-Level Security (RLS)** enabled on all database tables
+- **JWT authentication** for all Edge Function calls
+- **Secure token storage** with expo-secure-store
+- **HTTPS-only** API calls
+- **Input validation** on auth forms
+- **Scope gating** prevents inappropriate AI usage
 
 ### Performance
 
@@ -302,7 +373,15 @@ The app maintains the calming olive-green color scheme:
 
 ## 🧪 Testing
 
-To test the app:
+### Automated Tests
+
+Run SSE parser tests:
+
+```bash
+npm test utils/sse.test.ts
+```
+
+### Manual Testing
 
 1. **Authentication Flow**:
 
@@ -312,18 +391,27 @@ To test the app:
 
 2. **Chat Functionality**:
 
-   - Send messages to AI
-   - Verify responses appear
-   - Test error handling (invalid API key, network errors)
+   - Send in-scope message: "I'm feeling stressed about work"
+   - Verify streaming (tokens appear progressively)
+   - Send out-of-scope message: "Should I invest in Bitcoin?"
+   - Verify yellow deflection message appears
+   - Close app and reopen → verify history loads
 
-3. **Navigation**:
+3. **Preferences**:
+
+   - Navigate to Settings → Preferences
+   - Set nickname, pronouns, tone
+   - Save and send new message
+   - Verify AI uses your nickname
+
+4. **Navigation**:
 
    - Toggle between Voice and Chat tabs
    - Open side menu
    - Navigate to Profile and Settings
    - Test back navigation
 
-4. **Permissions**:
+5. **Permissions**:
    - Accept/deny microphone permissions
    - Verify appropriate error messages
 
@@ -331,8 +419,8 @@ To test the app:
 
 **High Priority:**
 
-- Full voice chat with Gemini Live API
-- Real chat history persistence
+- Full voice chat with OpenAI Realtime API
+- Automatic memory extraction from conversations
 - Push notifications for reminders
 - Offline mode with local storage
 
@@ -342,6 +430,7 @@ To test the app:
 - Customizable themes
 - Export chat history
 - Mood tracking integration
+- Multiple conversations management UI
 
 **Low Priority:**
 
@@ -349,6 +438,7 @@ To test the app:
 - Apple Health/Google Fit integration
 - Multiple language support
 - Accessibility improvements (screen reader, larger text)
+- Semantic search with pgvector embeddings
 
 ## 🐛 Troubleshooting
 
@@ -391,9 +481,16 @@ This project is part of the Olive mental health initiative.
 
 For issues or questions:
 
-- Check Supabase documentation: [supabase.com/docs](https://supabase.com/docs)
-- Check Expo documentation: [docs.expo.dev](https://docs.expo.dev)
-- Check Gemini API docs: [ai.google.dev/docs](https://ai.google.dev/docs)
+- **Supabase**: [supabase.com/docs](https://supabase.com/docs)
+- **Expo**: [docs.expo.dev](https://docs.expo.dev)
+- **OpenAI**: [platform.openai.com/docs](https://platform.openai.com/docs)
+- **Edge Functions**: [supabase.com/docs/guides/functions](https://supabase.com/docs/guides/functions)
+
+**Project-Specific Docs**:
+
+- Chat Service: `services/CHAT_SERVICE_USAGE.md`
+- Database Setup: `supabase/MIGRATION_GUIDE.md`
+- Edge Functions: `supabase/functions/README.md`
 
 ---
 

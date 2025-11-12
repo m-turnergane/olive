@@ -93,6 +93,7 @@ If you want Google sign-in to work:
 The SQL script creates:
 
 ✅ **users table** with fields:
+
 - `id` (UUID, primary key, linked to auth.users)
 - `email` (text, unique, not null)
 - `name` (text)
@@ -101,32 +102,39 @@ The SQL script creates:
 - `updated_at` (timestamp, auto-updated)
 
 ✅ **Row Level Security (RLS)** enabled with policies:
+
 - Users can only view their own data
 - Users can only insert their own data
 - Users can only update their own data
 - Users can only delete their own data
 
 ✅ **Automatic triggers**:
+
 - Auto-update `updated_at` on record changes
 - Auto-create user record when auth user is created
 
 ✅ **Performance indexes**:
+
 - Email index for fast lookups
 - Created_at index for sorting
 
 ## Troubleshooting
 
 ### Issue: "relation 'users' does not exist"
+
 - **Solution**: Make sure you ran the SQL script in Step 2
 
 ### Issue: "permission denied for table users"
+
 - **Solution**: Check that RLS policies are created correctly. Re-run the SQL script.
 
 ### Issue: "Cannot find module 'EXPO_PUBLIC_SUPABASE_URL'"
+
 - **Solution**: Make sure .env file exists and is properly formatted. Restart Expo dev server.
 
 ### Issue: Google OAuth not working
-- **Solution**: 
+
+- **Solution**:
   1. Check Google Cloud Console credentials
   2. Verify redirect URIs are correct
   3. Make sure Google provider is enabled in Supabase
@@ -142,6 +150,31 @@ The SQL script creates:
 4. **Service role key should NEVER be in client code** - We only use anon key
 5. **Validate all inputs** - Already done in LoginScreen forms
 
+## Chat Persistence Migration
+
+After completing the basic setup above, add chat persistence with our migration:
+
+**📁 Migration File**: `migrations/20251112000000_chat_schema.sql`
+
+**📖 Full Guide**: See `MIGRATION_GUIDE.md` in this directory for detailed instructions
+
+**Quick Steps**:
+
+1. Go to Supabase Dashboard → SQL Editor → New Query
+2. Copy contents of `migrations/20251112000000_chat_schema.sql`
+3. Paste and run (Ctrl+Enter or Cmd+Enter)
+4. Verify success (should see verification query results)
+
+**What it adds**:
+
+- ✅ `conversations` table (chat sessions)
+- ✅ `messages` table (chat history)
+- ✅ `conversation_summaries` table (short-term memory)
+- ✅ `user_memories` table (long-term facts)
+- ✅ `user_preferences` table (user settings in JSONB)
+- ✅ RPC functions: `create_conversation()`, `add_message()`
+- ✅ Full RLS policies + indexes on all tables
+
 ## Next Steps
 
 Once setup is complete, you can:
@@ -149,13 +182,15 @@ Once setup is complete, you can:
 1. ✅ Test signup/login functionality
 2. ✅ Start using the chat feature (needs Gemini API key)
 3. ✅ Customize the users table (add more fields if needed)
-4. ⏳ Implement chat history storage (future enhancement)
-5. ⏳ Add user preferences (future enhancement)
+4. ✅ **NEW**: Run chat persistence migration (see above)
+5. ⏳ Implement chat streaming edge functions
+6. ⏳ Wire up client-side chat service
 
 ---
 
 **Need Help?**
+
 - Supabase Docs: https://supabase.com/docs
 - Supabase Auth Docs: https://supabase.com/docs/guides/auth
 - RLS Guide: https://supabase.com/docs/guides/auth/row-level-security
-
+- **Chat Migration**: See `MIGRATION_GUIDE.md` in this directory

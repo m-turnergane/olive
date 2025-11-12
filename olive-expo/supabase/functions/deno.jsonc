@@ -1,0 +1,12 @@
+// Deno configuration for Supabase Edge Functions
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window", "deno.unstable"]
+  },
+  "imports": {
+    "@supabase/functions-js/edge-runtime": "jsr:@supabase/functions-js/edge-runtime",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.45.4"
+  }
+}
+
