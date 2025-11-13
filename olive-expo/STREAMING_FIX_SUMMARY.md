@@ -319,10 +319,61 @@ All acceptance criteria can now be tested on real devices. The streaming infrast
 
 ---
 
+### H) Client-Side Persistence (CRITICAL FIX)
+
+**Problem**: Messages disappearing after streaming completes
+
+After initial streaming fix, we discovered:
+1. User sends message → stream starts → tokens appear
+2. Midway through or after completion → **everything disappears**
+3. Chat UI becomes empty (user message + assistant response both gone)
+
+**Root Cause**:
+- Server persists user message ✅
+- Server does NOT persist assistant message in streaming mode ❌
+- Server-side wrapper was disabled to fix "No response body" error
+- When conversation reloads from DB, only user message exists
+- UI clears and shows empty conversation
+
+**Solution** (`services/chatService.ts`, `components/ChatView.tsx`):
+
+1. ✅ Added `persistMessage()` helper function
+   - Calls `add_message` RPC to persist any message
+   - Used for client-side persistence after streaming
+
+2. ✅ Updated `ChatView.tsx`:
+   - Accumulate `fullAssistantResponse` during streaming
+   - After stream completes, persist assistant message to database
+   - Log success/failure for debugging
+
+3. ✅ Now both messages survive:
+   - User message: Persisted server-side (chat-stream function)
+   - Assistant message: Persisted client-side (after streaming)
+   - Conversation history loads correctly on reload
+
+**Commit**: `3423517`
+
+---
+
+## 📊 Final Status
+
+**All Critical Issues Fixed** ✅
+
+1. ✅ Streaming works (expo/fetch)
+2. ✅ Messages persist correctly (client-side after stream)
+3. ✅ No "No response body" errors
+4. ✅ Conversations survive reloads
+5. ✅ RLS and RPCs working
+6. ✅ Comprehensive documentation
+
+---
+
 **Commits**:
 1. `1275dc4` - fix(stream): use expo/fetch for robust SSE streaming
 2. `f3e30c2` - fix(edge): harden streaming response headers
 3. `cab0811` - docs: comprehensive env vars and streaming troubleshooting
+4. `8d29920` - docs: add streaming fix implementation summary
+5. `3423517` - fix(persistence): persist assistant messages after streaming completes ⭐
 
 **Date**: November 13, 2025
 
