@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { User } from "../types";
@@ -24,6 +25,7 @@ import {
 
 interface ChatViewProps {
   user: User;
+  initialConversationId?: string | null;
 }
 
 interface DisplayMessage {
@@ -38,14 +40,22 @@ const SendIcon = () => (
   </Svg>
 );
 
-const ChatView: React.FC<ChatViewProps> = ({ user }) => {
-  const [conversationId, setConversationId] = useState<string | null>(null);
+const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
+  const [conversationId, setConversationId] = useState<string | null>(initialConversationId || null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const flatListRef = useRef<FlatList>(null);
+  const welcomeOpacity = useRef(new Animated.Value(1)).current;
+
+  // Update conversationId when initialConversationId changes
+  useEffect(() => {
+    if (initialConversationId) {
+      setConversationId(initialConversationId);
+    }
+  }, [initialConversationId]);
 
   // Load conversation history on mount (if conversation exists)
   useEffect(() => {
@@ -80,6 +90,24 @@ const ChatView: React.FC<ChatViewProps> = ({ user }) => {
     }
   }, [messages, streamingText]);
 
+  // Fade out welcome message when first message sent
+  useEffect(() => {
+    if (messages.length > 0) {
+      Animated.timing(welcomeOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      // Fade back in if messages are cleared
+      Animated.timing(welcomeOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [messages.length]);
+
   const handleSend = async () => {
     if (!input.trim() || isLoading || isStreaming) return;
 
@@ -99,6 +127,15 @@ const ChatView: React.FC<ChatViewProps> = ({ user }) => {
       // 2. Add user message to UI immediately (optimistic update)
       const userMessage: DisplayMessage = { role: "user", text: userText };
       setMessages((prev) => [...prev, userMessage]);
+
+      // 2b. Persist user message to database immediately (critical for first message)
+      try {
+        await persistMessage(currentConversationId, "user", userText);
+        console.log("✅ User message persisted to database");
+      } catch (error) {
+        console.error("Failed to persist user message:", error);
+        // Continue anyway - server will also persist it
+      }
 
       // 3. Check scope before sending to AI
       const inScope = await isInScope(userText);
@@ -224,14 +261,14 @@ const ChatView: React.FC<ChatViewProps> = ({ user }) => {
   };
 
   const renderEmptyState = () => (
-    <View style={styles.emptyState}>
+    <Animated.View style={[styles.emptyState, { opacity: welcomeOpacity }]}>
       <Text style={styles.welcomeText}>
         Welcome, {user.name.split(" ")[0]}.
       </Text>
       <Text style={styles.subtitleText}>
         We're here to listen. What's on your mind?
       </Text>
-    </View>
+    </Animated.View>
   );
 
   return (
@@ -364,10 +401,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   userBubble: {
-    backgroundColor: "#5E8C61",
+    backgroundColor: "#5E8C61", // olive-sage
   },
   modelBubble: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F0F4F1", // olive-light - softer than white
+    borderWidth: 1,
+    borderColor: "rgba(94, 140, 97, 0.15)", // subtle olive border
   },
   systemBubble: {
     backgroundColor: "#FFF3CD",
