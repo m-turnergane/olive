@@ -468,3 +468,51 @@ export async function updateConversationTitle(
     );
   }
 }
+
+/**
+ * Persist a message to the database (client-side persistence)
+ * Use this after streaming completes to save assistant responses
+ * @param conversationId UUID of the conversation
+ * @param role Message role (user, assistant, system, tool)
+ * @param content Message content
+ * @param tokensIn Optional tokens in (for analytics)
+ * @param tokensOut Optional tokens out (for analytics)
+ */
+export async function persistMessage(
+  conversationId: string,
+  role: "user" | "assistant" | "system" | "tool",
+  content: string,
+  tokensIn = 0,
+  tokensOut = 0
+): Promise<Message> {
+  try {
+    const { data, error } = await supabase
+      .rpc("add_message", {
+        p_conversation_id: conversationId,
+        p_role: role,
+        p_content: content,
+        p_tokens_in: tokensIn,
+        p_tokens_out: tokensOut,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new ChatServiceError(
+        `Failed to persist message: ${error.message}`,
+        error.code
+      );
+    }
+
+    if (!data) {
+      throw new ChatServiceError("No data returned from add_message");
+    }
+
+    return data as Message;
+  } catch (error) {
+    if (error instanceof ChatServiceError) {
+      throw error;
+    }
+    throw new ChatServiceError(`Unexpected error persisting message: ${error}`);
+  }
+}

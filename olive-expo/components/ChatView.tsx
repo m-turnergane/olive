@@ -18,6 +18,7 @@ import {
   isInScope,
   getDeflectionMessage,
   getConversationMessages,
+  persistMessage,
   type Message,
 } from "../services/chatService";
 
@@ -119,11 +120,14 @@ const ChatView: React.FC<ChatViewProps> = ({ user }) => {
       setIsStreaming(true);
       setStreamingText("");
 
+      let fullAssistantResponse = "";
+
       await sendMessageStream(
         currentConversationId,
         userText,
         // onToken callback - append each token
         (token: string) => {
+          fullAssistantResponse += token;
           setStreamingText((prev) => prev + token);
         },
         // onError callback
@@ -139,17 +143,31 @@ const ChatView: React.FC<ChatViewProps> = ({ user }) => {
         }
       );
 
-      // 5. Stream complete - add full assistant message to history
-      if (streamingText) {
+      // 5. Stream complete - persist and add full assistant message to history
+      setIsStreaming(false);
+      setStreamingText("");
+
+      if (fullAssistantResponse.trim()) {
         const assistantMessage: DisplayMessage = {
           role: "assistant",
-          text: streamingText,
+          text: fullAssistantResponse,
         };
         setMessages((prev) => [...prev, assistantMessage]);
-      }
 
-      setStreamingText("");
-      setIsStreaming(false);
+        // Persist assistant message to database (critical for history)
+        try {
+          await persistMessage(
+            currentConversationId,
+            "assistant",
+            fullAssistantResponse
+          );
+          console.log("✅ Assistant message persisted to database");
+        } catch (error) {
+          console.error("Failed to persist assistant message:", error);
+          // Message is still in UI, so user can see it
+          // But it won't be in history on reload
+        }
+      }
     } catch (error) {
       console.error("Failed to send message:", error);
       const errorMessage: DisplayMessage = {
