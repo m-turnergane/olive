@@ -1,10 +1,24 @@
 // olive-expo/services/chatService.ts
 // Client service for chat persistence + streaming + scope gating
 
+import { fetch as expoFetch } from "expo/fetch";
 import { supabase } from "./supabaseService";
+import { parseSSEChunk } from "../utils/sse";
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const FN_BASE = `${SUPABASE_URL}/functions/v1`;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+async function safeReadJSON(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return { raw: await res.text() };
+  }
+}
 
 // ============================================================================
 // Types
@@ -39,6 +53,34 @@ export class ChatServiceError extends Error {
   constructor(message: string, public code?: string, public status?: number) {
     super(message);
     this.name = "ChatServiceError";
+  }
+}
+
+/**
+ * Create an AbortController with timeout
+ * @param timeoutMs Timeout in milliseconds (default: 60000 = 1 minute)
+ * @returns AbortController that will abort after timeout
+ */
+export function createTimeoutController(timeoutMs = 60000): AbortController {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  // Store timeout ID for cleanup
+  (controller as any)._timeoutId = timeout;
+
+  return controller;
+}
+
+/**
+ * Clean up a timeout controller
+ * @param controller AbortController to clean up
+ */
+export function cleanupController(controller: AbortController): void {
+  const timeoutId = (controller as any)._timeoutId;
+  if (timeoutId) {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -167,7 +209,8 @@ export async function sendMessageStream(
   conversationId: string,
   text: string,
   onToken: (token: string) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   try {
     // Get JWT token for authentication
@@ -181,8 +224,8 @@ export async function sendMessageStream(
 
     const jwt = session.access_token;
 
-    // Call streaming Edge Function
-    const response = await fetch(`${FN_BASE}/chat-stream`, {
+    // Call streaming Edge Function using Expo's streaming fetch
+    const response = await expoFetch(`${FN_BASE}/chat-stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -192,24 +235,38 @@ export async function sendMessageStream(
         conversation_id: conversationId,
         user_text: text,
       }),
+      signal,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new ChatServiceError(
-        `Chat stream error: ${errorText || response.statusText}`,
-        "STREAM_ERROR",
-        response.status
-      );
+      // Server returns JSON with {kind:'error', status, error:{...}}
+      const err = await safeReadJSON(response);
+      console.error("Streaming error:", err);
+      const errorMessage =
+        err?.error?.error?.message ||
+        err?.error?.message ||
+        `HTTP ${response.status}`;
+      throw new ChatServiceError(errorMessage, "HTTP_ERROR", response.status);
     }
 
+    // If server chose non-streaming (debug mode), it returns JSON {text}
+    if (response.headers.get("Content-Type")?.includes("application/json")) {
+      const j = await response.json();
+      if (j?.text) {
+        onToken(j.text); // one-shot append
+      }
+      return;
+    }
+
+    // Otherwise expect SSE stream
     if (!response.body) {
       throw new ChatServiceError("No response body", "NO_BODY");
     }
 
-    // Parse SSE stream
+    // Parse SSE stream using Expo's streaming fetch
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = "";
 
     try {
       while (true) {
@@ -219,24 +276,24 @@ export async function sendMessageStream(
           break;
         }
 
-        // Decode chunk
+        // Decode chunk and add to buffer
         const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
 
-        // Parse SSE format: data: {...}\n\n
-        for (const line of chunk.split("\n")) {
-          if (!line.startsWith("data:")) {
+        // Process complete lines from buffer
+        const lines = buffer.split("\n");
+        // Keep last incomplete line in buffer
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith("data:")) {
             continue;
           }
 
           const payload = line.replace(/^data:\s*/, "").trim();
 
-          // Skip [DONE] marker
-          if (payload === "[DONE]") {
-            continue;
-          }
-
-          // Skip empty payloads
-          if (!payload) {
+          // Skip [DONE] marker and empty payloads
+          if (payload === "[DONE]" || !payload) {
             continue;
           }
 
@@ -254,6 +311,12 @@ export async function sendMessageStream(
             }
           }
         }
+      }
+
+      // Process any remaining buffered content
+      if (buffer.trim()) {
+        const tokens = parseSSEChunk(buffer);
+        tokens.forEach(onToken);
       }
     } finally {
       reader.releaseLock();
@@ -294,8 +357,8 @@ export async function isInScope(text: string): Promise<boolean> {
 
     const jwt = session.access_token;
 
-    // Call gate Edge Function
-    const response = await fetch(`${FN_BASE}/gate`, {
+    // Call gate Edge Function (no streaming, regular fetch is fine)
+    const response = await expoFetch(`${FN_BASE}/gate`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
