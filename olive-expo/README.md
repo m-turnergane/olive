@@ -473,6 +473,175 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
+### Chat Streaming Issues
+
+**Problem: "No response body" error when sending messages**
+
+This is the most common streaming issue. Solutions:
+
+1. **Verify Expo fetch is being used** (✅ Fixed in latest version)
+   - Client now uses `expo/fetch` instead of global `fetch`
+   - This enables proper ReadableStream support in React Native
+
+2. **Check Edge Function logs**
+   ```bash
+   # View real-time logs
+   supabase functions logs chat-stream --follow
+   ```
+   
+   Look for:
+   - OpenAI API errors (model not found, auth issues)
+   - Server-side errors before stream starts
+   - Response Content-Type header (should be `text/event-stream`)
+
+3. **Test with non-streaming mode first**
+   ```bash
+   # Set on Supabase dashboard or via CLI
+   supabase secrets set CHAT_STREAM=false
+   ```
+   
+   If non-streaming works but streaming doesn't:
+   - Issue is in SSE parsing or stream handling
+   - Check network inspector in dev tools
+   - Verify no proxy/firewall is blocking SSE
+
+4. **Verify OpenAI credentials**
+   ```bash
+   # Check secrets are set
+   supabase secrets list
+   
+   # Should show OPENAI_API_KEY (value hidden)
+   ```
+   
+   Test OpenAI key directly:
+   ```bash
+   curl https://api.openai.com/v1/models \
+     -H "Authorization: Bearer YOUR_KEY"
+   ```
+
+5. **Check model availability**
+   - Ensure `OPENAI_CHAT_MODEL` (default: `gpt-5-nano`) is accessible
+   - Try fallback: `supabase secrets set OPENAI_CHAT_MODEL=gpt-3.5-turbo`
+   - Some models require special access or organization membership
+
+**Problem: Streaming works but tokens appear slowly or in batches**
+
+- **Expected behavior**: Some batching is normal due to network buffering
+- **Verify**: OpenAI is streaming (check logs for `data:` events)
+- **Improve**: 
+  - Use faster model (nano models are quickest)
+  - Reduce system prompt length
+  - Check network latency
+
+**Problem: First message works, subsequent messages fail**
+
+- **Cause**: AbortController not cleaned up properly
+- **Solution**: Ensure you're canceling previous requests:
+  ```typescript
+  import { createTimeoutController, cleanupController } from './services/chatService';
+  
+  // Before new request
+  if (currentController) {
+    cleanupController(currentController);
+  }
+  
+  // Create new controller with 60s timeout
+  const controller = createTimeoutController(60000);
+  
+  await sendMessageStream(
+    conversationId, 
+    text, 
+    onToken,
+    onError,
+    controller.signal
+  );
+  ```
+
+**Problem: Empty or partial responses**
+
+1. **Check conversation context size**
+   - OpenAI has token limits per request
+   - Summaries help compress context
+   - Latest messages + summary should fit in model's context window
+
+2. **Verify messages are persisted**
+   ```sql
+   -- In Supabase SQL editor
+   SELECT role, content, created_at 
+   FROM messages 
+   WHERE conversation_id = 'your-conv-id'
+   ORDER BY created_at DESC
+   LIMIT 10;
+   ```
+
+3. **Check RLS policies**
+   - Ensure user owns the conversation
+   - Test: `SELECT * FROM conversations WHERE id = 'conv-id';`
+   - Should return row if user is owner
+
+**Problem: SSE parse errors in console**
+
+- **Usually safe to ignore** - common for incomplete chunks
+- **Check if responses are complete** - if yes, parsing is working
+- **Enable dev logging**:
+  ```typescript
+  // In chatService.ts, __DEV__ logs parse errors
+  // Look for patterns in malformed chunks
+  ```
+
+**Debug Mode: Full Request/Response Logging**
+
+1. Set non-streaming mode:
+   ```bash
+   supabase secrets set CHAT_STREAM=false
+   ```
+
+2. Check Edge Function logs:
+   ```bash
+   supabase functions logs chat-stream --follow
+   ```
+
+3. Send a test message and inspect logs for:
+   - Full OpenAI request payload
+   - Complete response text
+   - Any errors or warnings
+
+4. Re-enable streaming after debugging:
+   ```bash
+   supabase secrets set CHAT_STREAM=true
+   ```
+
+**Testing Streaming Locally**
+
+1. Run functions locally:
+   ```bash
+   cd supabase
+   supabase functions serve --env-file .env.local
+   ```
+
+2. Update client to point to local functions:
+   ```typescript
+   // Temporarily in services/chatService.ts
+   const FN_BASE = 'http://localhost:54321/functions/v1';
+   ```
+
+3. Test with curl:
+   ```bash
+   curl -N http://localhost:54321/functions/v1/chat-stream \
+     -H "Authorization: Bearer YOUR_JWT" \
+     -H "Content-Type: application/json" \
+     -d '{"conversation_id":"test-uuid","user_text":"Hello"}'
+   ```
+   
+   You should see `data:` events streaming in real-time.
+
+**Still Having Issues?**
+
+1. Check `supabase/functions/ENV_TEMPLATE.md` for complete environment setup
+2. Verify all migrations ran: `supabase/migrations/*.sql`
+3. Test authentication: ensure JWT is valid and not expired
+4. Review `TESTING_GUIDE.md` for acceptance test checklist
+
 ## 📄 License
 
 This project is part of the Olive mental health initiative.
