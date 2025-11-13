@@ -30,6 +30,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, onLogout }) => {
   const [currentMode, setCurrentMode] = useState<Mode>("voice");
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<Page>("main");
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [chatViewKey, setChatViewKey] = useState(1);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -44,8 +45,17 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, onLogout }) => {
   }, [currentPage, currentMode, chatViewKey]);
 
   const handleNewChat = () => {
+    setSelectedConversationId(null); // Clear selection for new chat
     setChatViewKey((prev) => prev + 1);
     setCurrentMode("chat");
+    setMenuOpen(false);
+  };
+
+  const handleConversationSelect = (conversationId: string) => {
+    setSelectedConversationId(conversationId);
+    setChatViewKey((prev) => prev + 1);
+    setCurrentMode("chat");
+    setCurrentPage("main");
     setMenuOpen(false);
   };
 
@@ -71,7 +81,11 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, onLogout }) => {
           </Animated.View>
         ) : (
           <Animated.View style={[styles.pageContainer, { opacity: fadeAnim }]}>
-            <ChatView user={user} />
+            <ChatView 
+              key={chatViewKey}
+              user={user} 
+              initialConversationId={selectedConversationId}
+            />
           </Animated.View>
         );
     }
@@ -154,6 +168,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, onLogout }) => {
             setMenuOpen(false);
           }}
           onNewChatClick={handleNewChat}
+          onConversationSelect={handleConversationSelect}
           onLogout={onLogout}
         />
 

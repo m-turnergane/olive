@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
   Modal,
   Pressable,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { User } from '../types';
 import UserIcon from './icons/UserIcon';
 import CogIcon from './icons/CogIcon';
 import LogoutIcon from './icons/LogoutIcon';
+import { getUserConversations, type Conversation } from '../services/chatService';
 
 interface SideMenuProps {
   isOpen: boolean;
@@ -24,6 +26,7 @@ interface SideMenuProps {
   onProfileClick: () => void;
   onSettingsClick: () => void;
   onNewChatClick: () => void;
+  onConversationSelect: (conversationId: string) => void;
   onLogout: () => void;
 }
 
@@ -36,14 +39,11 @@ const SideMenu: React.FC<SideMenuProps> = ({
   onProfileClick,
   onSettingsClick,
   onNewChatClick,
+  onConversationSelect,
   onLogout,
 }) => {
-  const chatHistory = [
-    { id: 1, title: 'Mindfulness Exercise', time: 'Today' },
-    { id: 2, title: 'Cognitive Reframing', time: 'Yesterday' },
-    { id: 3, title: 'Goal Setting', time: '3 days ago' },
-    { id: 4, title: 'Gratitude Journal', time: 'Last week' },
-  ];
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const slideAnim = React.useRef(new Animated.Value(-320)).current;
 
@@ -54,6 +54,48 @@ const SideMenu: React.FC<SideMenuProps> = ({
       useNativeDriver: true,
     }).start();
   }, [isOpen]);
+
+  // Load conversations when menu opens
+  useEffect(() => {
+    if (isOpen) {
+      loadConversations();
+    }
+  }, [isOpen]);
+
+  const loadConversations = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const convos = await getUserConversations(20);
+      setConversations(convos);
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const formatRelativeTime = (dateString: string): string => {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return date.toLocaleDateString();
+  };
+
+  const handleConversationClick = (conversationId: string) => {
+    onConversationSelect(conversationId);
+    onClose();
+  };
 
   return (
     <Modal
@@ -134,17 +176,33 @@ const SideMenu: React.FC<SideMenuProps> = ({
           </View>
 
           <ScrollView style={styles.historyContainer}>
-            {chatHistory.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                onPress={onClose}
-                style={styles.historyItem}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.historyTitle}>{item.title}</Text>
-                <Text style={styles.historyTime}>{item.time}</Text>
-              </TouchableOpacity>
-            ))}
+            {isLoadingHistory ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color="#5E8C61" />
+                <Text style={styles.loadingText}>Loading conversations...</Text>
+              </View>
+            ) : conversations.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No conversations yet</Text>
+                <Text style={styles.emptySubtext}>Start a chat to begin!</Text>
+              </View>
+            ) : (
+              conversations.map((convo) => (
+                <TouchableOpacity
+                  key={convo.id}
+                  onPress={() => handleConversationClick(convo.id)}
+                  style={styles.historyItem}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.historyTitle} numberOfLines={1}>
+                    {convo.title || 'Untitled conversation'}
+                  </Text>
+                  <Text style={styles.historyTime}>
+                    {formatRelativeTime(convo.updated_at)}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
           </ScrollView>
 
           <View style={styles.footer}>
@@ -301,6 +359,28 @@ const styles = StyleSheet.create({
   historyTime: {
     fontSize: 12,
     color: 'rgba(27, 58, 47, 0.5)',
+  },
+  loadingContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: 'rgba(27, 58, 47, 0.6)',
+  },
+  emptyContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: 'rgba(27, 58, 47, 0.6)',
+    marginBottom: 4,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: 'rgba(27, 58, 47, 0.4)',
   },
   footer: {
     padding: 24,
