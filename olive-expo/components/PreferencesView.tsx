@@ -23,6 +23,7 @@ interface UserPreferencesData {
   nickname?: string;
   pronouns?: string;
   tone?: "casual" | "professional" | "supportive";
+  voice_gender?: "male" | "female";
 }
 
 const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
@@ -30,6 +31,7 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
     nickname: "",
     pronouns: "",
     tone: "supportive",
+    voice_gender: "female",
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -58,6 +60,7 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
           nickname: data.data.nickname || "",
           pronouns: data.data.pronouns || "",
           tone: data.data.tone || "supportive",
+          voice_gender: data.data.voice_gender || "female",
         });
       }
     } catch (error) {
@@ -208,6 +211,52 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
               Professional
             </Text>
             <Text style={styles.toneDescription}>Direct & clear</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Voice Gender Selection */}
+      <View style={styles.section}>
+        <Text style={styles.label}>Voice Preference</Text>
+        <Text style={styles.helper}>
+          Choose a voice for voice conversations with Olive
+        </Text>
+
+        <View style={styles.toneOptions}>
+          <TouchableOpacity
+            style={[
+              styles.toneButton,
+              preferences.voice_gender === "female" && styles.toneButtonActive,
+            ]}
+            onPress={() => setPreferences({ ...preferences, voice_gender: "female" })}
+          >
+            <Text
+              style={[
+                styles.toneButtonText,
+                preferences.voice_gender === "female" && styles.toneButtonTextActive,
+              ]}
+            >
+              Female Voice
+            </Text>
+            <Text style={styles.toneDescription}>Nova (warm & natural)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.toneButton,
+              preferences.voice_gender === "male" && styles.toneButtonActive,
+            ]}
+            onPress={() => setPreferences({ ...preferences, voice_gender: "male" })}
+          >
+            <Text
+              style={[
+                styles.toneButtonText,
+                preferences.voice_gender === "male" && styles.toneButtonTextActive,
+              ]}
+            >
+              Male Voice
+            </Text>
+            <Text style={styles.toneDescription}>Alloy (neutral & balanced)</Text>
           </TouchableOpacity>
         </View>
       </View>

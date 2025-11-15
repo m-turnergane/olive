@@ -79,6 +79,9 @@ export interface UserPreferences {
     tone?: 'casual' | 'professional' | 'supportive';
     opt_out_topics?: string[];
     crisis_prefs?: Record<string, any>;
+    voice_gender?: 'male' | 'female'; // Voice preference for Realtime API
+    location?: string; // User location for find_care tool (city or lat/lng)
+    search_radius_km?: number; // Search radius for find_care tool
   };
   updated_at: string;
 }
