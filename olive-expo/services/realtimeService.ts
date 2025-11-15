@@ -25,6 +25,8 @@ export interface RealtimeCallbacks {
   onAssistantText: (text: string, isFinal: boolean) => void;
   onSpeakingStart: () => void;
   onSpeakingEnd: () => void;
+  onResponseComplete: () => void; // Fired when response.done
+  onUserTurnEnd: () => void; // Fired when VAD detects user stopped talking
   onError: (error: Error) => void;
   onConnect: () => void;
   onDisconnect: () => void;
@@ -43,6 +45,7 @@ export interface EphemeralTokenResponse {
 export interface RealtimeConnection {
   disconnect: () => Promise<void>;
   sendText: (text: string) => void;
+  triggerResponse: () => void; // Manually trigger response.create
   isConnected: () => boolean;
 }
 
@@ -266,6 +269,19 @@ export async function connectRealtime(
         }
       },
 
+      triggerResponse: () => {
+        if (dataChannel && dataChannel.readyState === 'open') {
+          const message = JSON.stringify({
+            type: 'response.create',
+            response: {},
+          });
+          dataChannel.send(message);
+          console.log('[Realtime] Triggered response.create');
+        } else {
+          console.warn('[Realtime] Data channel not open, cannot trigger response');
+        }
+      },
+
       isConnected: () => isConnectedFlag,
     };
   } catch (error) {
@@ -294,6 +310,44 @@ function handleRealtimeMessage(message: any, callbacks: RealtimeCallbacks) {
   const { type } = message;
 
   switch (type) {
+    // Session events
+    case 'session.created':
+    case 'session.updated':
+      // Session lifecycle - already logged connection
+      break;
+
+    // Input audio buffer events (user speaking)
+    case 'input_audio_buffer.speech_started':
+      // User started speaking - VAD detected
+      break;
+
+    case 'input_audio_buffer.speech_stopped':
+      // User stopped speaking - VAD detected
+      break;
+
+    case 'input_audio_buffer.committed':
+      // Audio buffer committed after user stopped
+      // This is when we should trigger response.create
+      callbacks.onUserTurnEnd();
+      break;
+
+    case 'input_audio_buffer.cleared':
+      // Buffer was cleared (e.g., due to interruption)
+      break;
+
+    // Conversation item events
+    case 'conversation.item.created':
+      // New conversation item (user or assistant message)
+      break;
+
+    case 'conversation.item.truncated':
+      // Item was truncated (interruption)
+      break;
+
+    case 'conversation.item.deleted':
+      // Item was deleted
+      break;
+
     case 'conversation.item.input_audio_transcription.completed':
       // User's speech transcription (final)
       if (message.transcript) {
@@ -301,13 +355,46 @@ function handleRealtimeMessage(message: any, callbacks: RealtimeCallbacks) {
       }
       break;
 
-    case 'conversation.item.input_audio_transcription.delta':
-      // User's speech transcription (partial)
-      if (message.delta) {
-        callbacks.onTranscript(message.delta, false);
-      }
+    case 'conversation.item.input_audio_transcription.failed':
+      console.warn('[Realtime] Transcription failed:', message.error);
       break;
 
+    // Response events (assistant)
+    case 'response.created':
+      // Response generation started
+      break;
+
+    case 'response.output_item.added':
+      // Output item added to response
+      break;
+
+    case 'response.content_part.added':
+      // Content part added
+      break;
+
+    case 'response.content_part.done':
+      // Content part completed
+      break;
+
+    case 'response.output_item.done':
+      // Output item completed
+      break;
+
+    case 'response.done':
+      // Response fully completed - signal finalization
+      callbacks.onResponseComplete();
+      break;
+
+    case 'response.cancelled':
+      // Response was cancelled
+      break;
+
+    case 'response.failed':
+      console.error('[Realtime] Response failed:', message.error);
+      callbacks.onError(new Error(message.error?.message || 'Response failed'));
+      break;
+
+    // Audio transcript events (text version of audio)
     case 'response.audio_transcript.delta':
       // Assistant's text response (streaming)
       if (message.delta) {
@@ -322,25 +409,49 @@ function handleRealtimeMessage(message: any, callbacks: RealtimeCallbacks) {
       }
       break;
 
+    // Audio buffer events
     case 'response.audio.delta':
-      // Assistant is speaking (audio chunk received)
-      // Audio is handled by ontrack event, we just track state
+      // Assistant audio chunk - handled by WebRTC track
       break;
 
     case 'response.audio.done':
-      // Assistant finished speaking
+      // Assistant finished speaking audio
       callbacks.onSpeakingEnd();
       break;
 
+    case 'output_audio_buffer.started':
+      // Assistant started generating audio
+      break;
+
+    case 'output_audio_buffer.speech_started':
+      // Assistant started speaking
+      callbacks.onSpeakingStart();
+      break;
+
+    case 'output_audio_buffer.speech_stopped':
+      // Assistant stopped speaking
+      callbacks.onSpeakingEnd();
+      break;
+
+    case 'output_audio_buffer.cleared':
+      // Output buffer cleared (interruption)
+      break;
+
+    // Rate limits
+    case 'rate_limits.updated':
+      // Rate limit info updated - can log if needed
+      break;
+
+    // Errors
     case 'error':
       console.error('[Realtime] Server error:', message.error);
       callbacks.onError(new Error(message.error?.message || 'Realtime API error'));
       break;
 
     default:
-      // Log unknown events for debugging
+      // Log truly unknown events for debugging
       if (__DEV__) {
-        console.debug('[Realtime] Unknown event type:', type);
+        console.debug('[Realtime] Unhandled event type:', type);
       }
       break;
   }

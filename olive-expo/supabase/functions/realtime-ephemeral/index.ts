@@ -15,24 +15,26 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 const REALTIME_ENABLE = Deno.env.get("REALTIME_ENABLE") ?? "true";
 // @ts-ignore
 const REALTIME_SERVER = Deno.env.get("REALTIME_SERVER") ?? "openai";
-// @ts-ignore
+// @ts-ignore - Deno global
 const REALTIME_MODEL =
-  Deno.env.get("REALTIME_MODEL") ?? "gpt-4o-mini-realtime-preview-2024-12-17";
-// @ts-ignore
-const REALTIME_VOICE_DEFAULT = Deno.env.get("REALTIME_VOICE_DEFAULT") ?? "shimmer";
-// @ts-ignore
-const REALTIME_VOICE_FEMALE = Deno.env.get("REALTIME_VOICE_FEMALE") ?? "shimmer";
-// @ts-ignore
+  Deno.env.get("REALTIME_MODEL") ?? "gpt-realtime-mini";
+// @ts-ignore - Deno global
+const REALTIME_VOICE_DEFAULT =
+  Deno.env.get("REALTIME_VOICE_DEFAULT") ?? "sage";
+// @ts-ignore - Deno global
+const REALTIME_VOICE_FEMALE =
+  Deno.env.get("REALTIME_VOICE_FEMALE") ?? "sage";
+// @ts-ignore - Deno global
 const REALTIME_VOICE_MALE = Deno.env.get("REALTIME_VOICE_MALE") ?? "alloy";
-// @ts-ignore
+// @ts-ignore - Deno global
 const REALTIME_TURN_DETECTION =
   Deno.env.get("REALTIME_TURN_DETECTION") ?? "server_vad";
-// @ts-ignore
+// @ts-ignore - Deno global
 const AZURE_OPENAI_ENDPOINT = Deno.env.get("AZURE_OPENAI_ENDPOINT");
-// @ts-ignore
+// @ts-ignore - Deno global
 const AZURE_OPENAI_API_VERSION =
   Deno.env.get("AZURE_OPENAI_API_VERSION") ?? "2025-04-01-preview";
-// @ts-ignore
+// @ts-ignore - Deno global
 const LOG_LEVEL = Deno.env.get("LOG_LEVEL") ?? "info";
 
 // CORS headers
@@ -177,7 +179,10 @@ Deno.serve(async (req) => {
       turn_detection: {
         type: REALTIME_TURN_DETECTION,
         threshold: 0.5,
-        silence_duration_ms: 900,
+        prefix_padding_ms: 300,
+        silence_duration_ms: 1000,
+        create_response: false, // We control response.create manually
+        interrupt_response: false, // Prevent self-interruption from echo
       },
     };
 

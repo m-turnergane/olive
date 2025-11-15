@@ -238,7 +238,7 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
             >
               Female Voice
             </Text>
-            <Text style={styles.toneDescription}>Shimmer (warm & friendly)</Text>
+            <Text style={styles.toneDescription}>Sage (warm & natural)</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

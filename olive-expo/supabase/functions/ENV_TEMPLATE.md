@@ -56,26 +56,26 @@ This document describes all environment variables required for Olive's backend a
 - Options: `openai`, `azure`
 - Use `azure` if using Azure OpenAI Service
 
-**`REALTIME_MODEL`** (Default: `gpt-4o-mini-realtime-preview-2024-12-17`)
+**`REALTIME_MODEL`** (Default: `gpt-realtime-mini`)
 
 - Realtime model for voice conversations
-- Options: `gpt-4o-mini-realtime-preview-2024-12-17`, `gpt-4o-realtime-preview`
+- Options: `gpt-realtime-mini` (recommended), `gpt-4o-realtime-preview`, or dated variants like `gpt-realtime-mini-2025-10-06`
 - Azure: use `gpt-realtime-mini` or similar deployment names
 
-**`REALTIME_VOICE_DEFAULT`** (Default: `shimmer`)
+**`REALTIME_VOICE_DEFAULT`** (Default: `sage`)
 
 - Default voice for Realtime API
 - Used when user has no voice preference set
 
-**`REALTIME_VOICE_FEMALE`** (Default: `shimmer`)
+**`REALTIME_VOICE_FEMALE`** (Default: `sage`)
 
 - Female voice option
-- Valid options: `shimmer` (warm), `sage` (calm), `coral` (friendly), `ballad` (smooth), `verse` (expressive)
+- Valid options: `sage` (warm & natural - recommended), `shimmer`, `coral` (friendly), `ballad` (smooth), `verse` (expressive)
 
 **`REALTIME_VOICE_MALE`** (Default: `alloy`)
 
 - Male voice option
-- Valid options: `alloy` (neutral), `echo` (resonant), `ash` (mellow), `marin` (deep), `cedar` (rich)
+- Valid options: `alloy` (neutral & balanced - recommended), `echo` (resonant), `ash` (mellow), `marin` (deep), `cedar` (rich)
 
 **`REALTIME_TURN_DETECTION`** (Default: `server_vad`)
 
@@ -117,9 +117,9 @@ OPENAI_EMBED_MODEL=text-embedding-3-small
 # Realtime Voice Configuration (defaults shown)
 REALTIME_ENABLE=true
 REALTIME_SERVER=openai
-REALTIME_MODEL=gpt-4o-mini-realtime-preview-2024-12-17
-REALTIME_VOICE_DEFAULT=shimmer
-REALTIME_VOICE_FEMALE=shimmer
+REALTIME_MODEL=gpt-realtime-mini
+REALTIME_VOICE_DEFAULT=sage
+REALTIME_VOICE_FEMALE=sage
 REALTIME_VOICE_MALE=alloy
 REALTIME_TURN_DETECTION=server_vad
 
@@ -154,9 +154,9 @@ supabase secrets set CHAT_STREAM=true
 # Optional overrides - Realtime Voice
 supabase secrets set REALTIME_ENABLE=true
 supabase secrets set REALTIME_SERVER=openai
-supabase secrets set REALTIME_MODEL=gpt-4o-mini-realtime-preview-2024-12-17
-supabase secrets set REALTIME_VOICE_DEFAULT=shimmer
-supabase secrets set REALTIME_VOICE_FEMALE=shimmer
+supabase secrets set REALTIME_MODEL=gpt-realtime-mini
+supabase secrets set REALTIME_VOICE_DEFAULT=sage
+supabase secrets set REALTIME_VOICE_FEMALE=sage
 supabase secrets set REALTIME_VOICE_MALE=alloy
 supabase secrets set REALTIME_TURN_DETECTION=server_vad
 

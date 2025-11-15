@@ -5,7 +5,6 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   Alert,
   TouchableOpacity,
@@ -48,7 +47,6 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("idle");
-  const [transcripts, setTranscripts] = useState<TranscriptBubble[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(
     selectedConversationId || null
   );
@@ -58,16 +56,17 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [amplitude, setAmplitude] = useState(0);
 
-  const scrollViewRef = useRef<ScrollView>(null);
   const realtimeConnection = useRef<realtimeService.RealtimeConnection | null>(
     null
   );
 
-  // Track partial transcripts for streaming
+  // Internal transcript buffers (not displayed, only for persistence)
   const currentUserTranscript = useRef<string>("");
   const currentAssistantTranscript = useRef<string>("");
-  const userTranscriptId = useRef<string>("");
-  const assistantTranscriptId = useRef<string>("");
+  
+  // Turn management to prevent duplicate response.create
+  const currentTurnId = useRef<string>("");
+  const hasTriggeredResponse = useRef<boolean>(false);
 
   // Orb animation hook
   const {
@@ -151,10 +150,18 @@ const VoiceView: React.FC<VoiceViewProps> = ({
       // Ensure we have a conversation ID
       const convId = await getOrCreateConversation();
 
+      // Start a new turn
+      currentTurnId.current = Date.now().toString();
+      hasTriggeredResponse.current = false;
+      currentUserTranscript.current = "";
+      currentAssistantTranscript.current = "";
+
       // Connect to Realtime API
       const connection = await realtimeService.connectRealtime({
         onTranscript: handleUserTranscript,
         onAssistantText: handleAssistantText,
+        onUserTurnEnd: handleUserTurnEnd,
+        onResponseComplete: handleResponseComplete,
         onSpeakingStart: () => {
           console.log("[VoiceView] Assistant started speaking");
           setIsAssistantSpeaking(true);
@@ -204,142 +211,92 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   };
 
   // ============================================================================
-  // Transcript Handlers
+  // Transcript Handlers (Internal Buffering Only - No UI Display)
   // ============================================================================
 
-  const handleUserTranscript = async (text: string, isFinal: boolean) => {
+  const handleUserTranscript = (text: string, isFinal: boolean) => {
     if (!text) return;
 
     if (isFinal) {
-      // Final transcript - persist to database
+      // Final transcript - store in buffer
+      currentUserTranscript.current = text;
       console.log("[VoiceView] User transcript (final):", text);
-      currentUserTranscript.current = text;
-
-      // Update UI with final transcript
-      setTranscripts((prev) => {
-        const filtered = prev.filter((t) => t.id !== userTranscriptId.current);
-        return [
-          ...filtered,
-          {
-            role: "user",
-            text,
-            id: userTranscriptId.current || `user-${Date.now()}`,
-            isFinal: true,
-          },
-        ];
-      });
-
-      // Persist to database
-      try {
-        const convId = await getOrCreateConversation();
-        await chatService.persistMessage(convId, "user", text);
-        console.log("[VoiceView] User message persisted");
-      } catch (error) {
-        console.error("[VoiceView] Failed to persist user message:", error);
-      }
-
-      // Reset for next transcript
-      currentUserTranscript.current = "";
-      userTranscriptId.current = "";
     } else {
-      // Partial transcript - update UI only
-      console.log("[VoiceView] User transcript (partial):", text);
-      currentUserTranscript.current = text;
-
-      if (!userTranscriptId.current) {
-        userTranscriptId.current = `user-${Date.now()}`;
+      // Partial - just log for debugging, don't display
+      if (__DEV__) {
+        console.debug("[VoiceView] User transcript (partial):", text);
       }
-
-      setTranscripts((prev) => {
-        const filtered = prev.filter((t) => t.id !== userTranscriptId.current);
-        return [
-          ...filtered,
-          {
-            role: "user",
-            text,
-            id: userTranscriptId.current,
-            isFinal: false,
-          },
-        ];
-      });
     }
-
-    // Auto-scroll
-    scrollViewRef.current?.scrollToEnd({ animated: true });
   };
 
-  const handleAssistantText = async (text: string, isFinal: boolean) => {
+  const handleAssistantText = (text: string, isFinal: boolean) => {
     if (!text) return;
 
     if (isFinal) {
-      // Final response - persist to database
-      console.log("[VoiceView] Assistant response (final):", text);
+      // Final response - store in buffer
       currentAssistantTranscript.current = text;
-
-      // Update UI with final response
-      setTranscripts((prev) => {
-        const filtered = prev.filter(
-          (t) => t.id !== assistantTranscriptId.current
-        );
-        return [
-          ...filtered,
-          {
-            role: "assistant",
-            text,
-            id: assistantTranscriptId.current || `assistant-${Date.now()}`,
-            isFinal: true,
-          },
-        ];
-      });
-
-      // Persist to database
-      try {
-        const convId = await getOrCreateConversation();
-        await chatService.persistMessage(convId, "assistant", text);
-        console.log("[VoiceView] Assistant message persisted");
-
-        // Trigger title generation after first exchange
-        if (
-          transcripts.filter((t) => t.role === "user" && t.isFinal).length === 1
-        ) {
-          triggerTitleGeneration(convId);
-        }
-      } catch (error) {
-        console.error(
-          "[VoiceView] Failed to persist assistant message:",
-          error
-        );
-      }
-
-      // Reset for next response
-      currentAssistantTranscript.current = "";
-      assistantTranscriptId.current = "";
+      console.log("[VoiceView] Assistant response (final):", text);
     } else {
-      // Partial response - update UI only
+      // Streaming - accumulate but don't display
       currentAssistantTranscript.current += text;
+      if (__DEV__) {
+        console.debug("[VoiceView] Assistant response (partial):", currentAssistantTranscript.current);
+      }
+    }
+  };
 
-      if (!assistantTranscriptId.current) {
-        assistantTranscriptId.current = `assistant-${Date.now()}`;
+  // ============================================================================
+  // Turn Management
+  // ============================================================================
+
+  const handleUserTurnEnd = () => {
+    console.log("[VoiceView] User turn ended (VAD detected)");
+    
+    // Trigger response.create exactly once per turn
+    if (!hasTriggeredResponse.current && realtimeConnection.current) {
+      hasTriggeredResponse.current = true;
+      realtimeConnection.current.triggerResponse();
+      console.log("[VoiceView] Triggered response.create for turn:", currentTurnId.current);
+    }
+  };
+
+  const handleResponseComplete = async () => {
+    console.log("[VoiceView] Response completed - persisting transcripts");
+    
+    try {
+      const convId = await getOrCreateConversation();
+      
+      // Persist user transcript
+      if (currentUserTranscript.current.trim()) {
+        await chatService.persistMessage(convId, "user", currentUserTranscript.current);
+        console.log("[VoiceView] User message persisted");
+      }
+      
+      // Persist assistant response
+      if (currentAssistantTranscript.current.trim()) {
+        await chatService.persistMessage(convId, "assistant", currentAssistantTranscript.current);
+        console.log("[VoiceView] Assistant message persisted");
       }
 
-      setTranscripts((prev) => {
-        const filtered = prev.filter(
-          (t) => t.id !== assistantTranscriptId.current
-        );
-        return [
-          ...filtered,
-          {
-            role: "assistant",
-            text: currentAssistantTranscript.current,
-            id: assistantTranscriptId.current,
-            isFinal: false,
-          },
-        ];
-      });
-    }
+      // Trigger title generation after first complete exchange
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', convId);
+      
+      if (messages && messages.length <= 2) {
+        triggerTitleGeneration(convId);
+      }
 
-    // Auto-scroll
-    scrollViewRef.current?.scrollToEnd({ animated: true });
+      // Reset for next turn
+      currentUserTranscript.current = "";
+      currentAssistantTranscript.current = "";
+      currentTurnId.current = Date.now().toString();
+      hasTriggeredResponse.current = false;
+      
+    } catch (error) {
+      console.error("[VoiceView] Failed to persist messages:", error);
+    }
   };
 
   // ============================================================================
@@ -418,49 +375,7 @@ const VoiceView: React.FC<VoiceViewProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Transcription History */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.transcriptionContainer}
-        contentContainerStyle={styles.transcriptionContent}
-      >
-        {transcripts.length === 0 && connectionState === "idle" && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>
-              Tap the orb below to start a voice conversation with Olive
-            </Text>
-          </View>
-        )}
-
-        {transcripts.map((transcript) => (
-          <View
-            key={transcript.id}
-            style={[
-              styles.transcriptionBubble,
-              transcript.role === "user" && styles.userBubble,
-              transcript.role === "assistant" && styles.assistantBubble,
-              transcript.role === "system" && styles.systemBubble,
-              !transcript.isFinal && styles.partialBubble,
-            ]}
-          >
-            <Text
-              style={[
-                styles.transcriptionText,
-                transcript.role === "user" && styles.userText,
-                transcript.role === "system" && styles.systemText,
-                !transcript.isFinal && styles.partialText,
-              ]}
-            >
-              {transcript.text}
-            </Text>
-            {!transcript.isFinal && (
-              <Text style={styles.streamingIndicator}>...</Text>
-            )}
-          </View>
-        ))}
-      </ScrollView>
-
-      {/* Olive Orb - Interactive */}
+      {/* Olive Orb - Interactive (Center of Screen) */}
       <View style={styles.orbContainer}>
         <TouchableOpacity
           onPress={
@@ -520,7 +435,8 @@ const VoiceView: React.FC<VoiceViewProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingContainer: {
     flex: 1,
@@ -564,90 +480,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  transcriptionContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  transcriptionContent: {
-    paddingTop: 16,
-    paddingBottom: 300, // Space for the orb
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 32,
-    paddingHorizontal: 24,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: "rgba(27, 58, 47, 0.6)",
-    textAlign: "center",
-    lineHeight: 24,
-  },
-  transcriptionBubble: {
-    marginBottom: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    maxWidth: "80%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  userBubble: {
-    alignSelf: "flex-end",
-    backgroundColor: "#5E8C61",
-  },
-  assistantBubble: {
-    alignSelf: "flex-start",
-    backgroundColor: "#F0F4F1",
-    borderWidth: 1,
-    borderColor: "rgba(94, 140, 97, 0.15)",
-  },
-  systemBubble: {
-    alignSelf: "center",
-    backgroundColor: "#FEE2E2",
-    width: "90%",
-    maxWidth: "90%",
-  },
-  partialBubble: {
-    opacity: 0.8,
-  },
-  transcriptionText: {
-    fontSize: 16,
-    lineHeight: 22,
-    color: "#0C221B",
-  },
-  userText: {
-    color: "#FFFFFF",
-  },
-  systemText: {
-    color: "#DC2626",
-    textAlign: "center",
-  },
-  partialText: {
-    fontStyle: "italic",
-  },
-  streamingIndicator: {
-    fontSize: 14,
-    color: "rgba(0, 0, 0, 0.4)",
-    marginTop: 4,
-  },
   orbContainer: {
-    position: "absolute",
-    bottom: 60,
-    left: 0,
-    right: 0,
     alignItems: "center",
     justifyContent: "center",
   },
   stateContainer: {
-    marginTop: 16,
+    marginTop: 24,
     alignItems: "center",
   },
   stateText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "rgba(27, 58, 47, 0.7)",
     fontWeight: "500",
   },
@@ -658,15 +500,20 @@ const styles = StyleSheet.create({
     color: "#DC2626",
   },
   stopButton: {
-    marginTop: 16,
+    marginTop: 20,
     backgroundColor: "#DC2626",
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
   },
   stopButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "600",
   },
 });
