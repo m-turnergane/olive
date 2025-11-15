@@ -123,6 +123,11 @@ REALTIME_VOICE_FEMALE=sage
 REALTIME_VOICE_MALE=alloy
 REALTIME_TURN_DETECTION=server_vad
 
+# MCP find_care Tool Configuration
+MCP_FIND_CARE_URL=http://localhost:3001
+# In production, use deployed MCP server URL
+# MCP_FIND_CARE_URL=https://your-mcp-server.com
+
 # Azure OpenAI (only if REALTIME_SERVER=azure)
 # AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com
 # AZURE_OPENAI_API_VERSION=2025-04-01-preview

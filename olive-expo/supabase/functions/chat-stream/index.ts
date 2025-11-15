@@ -105,8 +105,10 @@ function buildOpenAIRequest(
   };
 }
 
-async function callOpenAI(messages: Array<{ role: string; content: string }>) {
+async function callOpenAI(messages: Array<any>, streamMode: boolean = CHAT_STREAM) {
   const { url, body } = buildOpenAIRequest(messages);
+  body.stream = streamMode; // Override stream based on parameter
+  
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -128,8 +130,8 @@ async function callOpenAI(messages: Array<{ role: string; content: string }>) {
     return { kind: "error", status: res.status, error: errJSON } as const;
   }
 
-  // Non-streaming path (debug or MODE that doesn't support stream)
-  if (!CHAT_STREAM) {
+  // Non-streaming path (debug or MODE that doesn't support stream, or tool call handling)
+  if (!streamMode) {
     const data = await res.json();
     console.log(
       "🔍 Raw OpenAI response:",
@@ -147,11 +149,13 @@ async function callOpenAI(messages: Array<{ role: string; content: string }>) {
           .join("") ??
         "";
       console.log("🔍 Extracted from Responses API - length:", text.length);
-      return { kind: "text", text } as const;
+      return { kind: "json", data, text } as const;
     } else {
       const text = data.choices?.[0]?.message?.content ?? "";
+      const toolCalls = data.choices?.[0]?.message?.tool_calls;
       console.log("🔍 Extracted from Chat Completions - length:", text.length);
-      return { kind: "text", text } as const;
+      console.log("🔍 Tool calls detected:", toolCalls?.length || 0);
+      return { kind: "json", data, text, toolCalls } as const;
     }
   }
 
@@ -338,7 +342,7 @@ Deno.serve(async (req) => {
       { role: "user", content: user_text },
     ];
 
-    // 5) Call OpenAI with robust error handling
+    // 5) Call OpenAI with tool support - loop until no more tool calls
     console.log(
       "🔍 About to call OpenAI - MODE:",
       OPENAI_API_MODE,
@@ -347,23 +351,104 @@ Deno.serve(async (req) => {
       "MODEL:",
       OPENAI_CHAT_MODEL
     );
-    const result = await callOpenAI(openaiMessages);
+    
+    let conversationMessages = [...openaiMessages];
+    let toolCallLoop = 0;
+    const MAX_TOOL_LOOPS = 3;
+    let finalResult: any = null;
+    let toolResults: any[] = [];
 
-    // 🔍 DEBUG: Log the result type and payload
-    console.log("🔍 OpenAI result kind:", result.kind);
-    if (result.kind === "error") {
-      console.error(
-        "OpenAI error payload:",
-        JSON.stringify(result.error, null, 2)
-      );
+    while (toolCallLoop < MAX_TOOL_LOOPS) {
+      // First call: try streaming. Subsequent calls: non-streaming for tool handling
+      const useStreaming = toolCallLoop === 0 && CHAT_STREAM;
+      const result = await callOpenAI(conversationMessages, useStreaming);
+
+      console.log("🔍 OpenAI result kind:", result.kind, "loop:", toolCallLoop);
+      
+      if (result.kind === "error") {
+        console.error("OpenAI error:", JSON.stringify(result.error, null, 2));
+        finalResult = result;
+        break;
+      }
+
+      if (result.kind === "stream") {
+        // Streaming response - no tool calls expected in first streaming response
+        // (We'd need to parse stream for tool calls, which is complex)
+        // For MVP, return stream directly
+        console.log("🔍 Returning streaming response (no tool handling in stream mode)");
+        finalResult = result;
+        break;
+      }
+
+      if (result.kind === "json") {
+        const { data, text, toolCalls } = result;
+        
+        // Check if model called any tools
+        if (toolCalls && toolCalls.length > 0 && toolCallLoop < MAX_TOOL_LOOPS - 1) {
+          console.log("🔍 Processing", toolCalls.length, "tool call(s)");
+          
+          // Add assistant message with tool calls to conversation
+          conversationMessages.push({
+            role: "assistant",
+            content: text || null,
+            tool_calls: toolCalls,
+          });
+
+          // Execute each tool call
+          for (const toolCall of toolCalls) {
+            const toolName = toolCall.function.name;
+            const toolArgs = JSON.parse(toolCall.function.arguments || "{}");
+            
+            console.log(`🔍 Executing tool: ${toolName}`, toolArgs);
+
+            if (toolName === "find_care") {
+              try {
+                const toolResult = await invokeFindCare(
+                  toolArgs,
+                  prefs?.data?.location,
+                  prefs?.data?.search_radius_km
+                );
+                
+                // Add tool result to conversation
+                conversationMessages.push({
+                  role: "tool",
+                  tool_call_id: toolCall.id,
+                  content: JSON.stringify(toolResult),
+                });
+
+                // Store for client
+                toolResults.push({
+                  tool: toolName,
+                  result: toolResult,
+                });
+
+                console.log(`✅ Tool ${toolName} executed successfully`);
+              } catch (error) {
+                console.error(`❌ Tool ${toolName} error:`, error);
+                conversationMessages.push({
+                  role: "tool",
+                  tool_call_id: toolCall.id,
+                  content: JSON.stringify({ error: String(error) }),
+                });
+              }
+            }
+          }
+
+          // Loop to get model's response with tool results
+          toolCallLoop++;
+          continue;
+        }
+
+        // No tool calls - this is the final response
+        console.log("🔍 No tool calls, final response");
+        finalResult = { kind: "text", text, toolResults };
+        break;
+      }
+
+      toolCallLoop++;
     }
-    if (result.kind === "text") {
-      console.log("OpenAI text response (length):", result.text?.length || 0);
-      console.log(
-        "OpenAI text response (preview):",
-        result.text?.substring(0, 100)
-      );
-    }
+
+    const result = finalResult;
 
     // If it's a JSON error from OpenAI, surface it to the client clearly
     if (result.kind === "error") {
@@ -375,10 +460,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // If it's non-streaming text (debug mode), store + return JSON
+    // If it's non-streaming text (debug mode or after tool calls), store + return JSON
     if (result.kind === "text") {
       const full = result.text ?? "";
+      const tools = result.toolResults || [];
       console.log("🔍 Non-streaming path - text length:", full.length);
+      console.log("🔍 Tool results:", tools.length);
+      
       await supabase.rpc("add_message", {
         p_conversation_id: conversation_id,
         p_role: "assistant",
@@ -441,7 +529,7 @@ Deno.serve(async (req) => {
         console.error("Title generation failed:", e);
       }
       console.log("🔍 Returning JSON response with text");
-      return new Response(JSON.stringify({ text: full }), {
+      return new Response(JSON.stringify({ text: full, tools }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

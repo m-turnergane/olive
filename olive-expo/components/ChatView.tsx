@@ -23,6 +23,7 @@ import {
   type Message,
 } from "../services/chatService";
 import { supabase } from "../services/supabaseService";
+import FindCareModal from "./FindCareModal";
 
 interface ChatViewProps {
   user: User;
@@ -53,6 +54,11 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
   const flatListRef = useRef<FlatList>(null);
   const welcomeOpacity = useRef(new Animated.Value(1)).current;
   const hasTitleGenerationAttempted = useRef<Set<string>>(new Set());
+  
+  // FindCare modal state
+  const [findCareModalVisible, setFindCareModalVisible] = useState(false);
+  const [careProviders, setCareProviders] = useState<any[]>([]);
+  const [findCareLoading, setFindCareLoading] = useState(false);
 
   // Update conversationId when initialConversationId changes
   useEffect(() => {
@@ -197,7 +203,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
 
       let fullAssistantResponse = "";
 
-      await sendMessageStream(
+      const toolResults = await sendMessageStream(
         currentConversationId,
         userText,
         // onToken callback - append each token
@@ -217,6 +223,16 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
           setMessages((prev) => [...prev, errorMessage]);
         }
       );
+
+      // Handle tool results (e.g., find_care)
+      if (toolResults && toolResults.length > 0) {
+        for (const toolResult of toolResults) {
+          if (toolResult.tool === "find_care" && toolResult.result?.providers) {
+            setCareProviders(toolResult.result.providers);
+            setFindCareModalVisible(true);
+          }
+        }
+      }
 
       // 5. Stream complete - persist and add full assistant message to history
       setIsStreaming(false);
@@ -329,81 +345,91 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-    >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item, index) => index.toString()}
-        contentContainerStyle={[
-          styles.messagesList,
-          messages.length === 0 && styles.emptyList,
-        ]}
-        ListEmptyComponent={renderEmptyState}
-        ListFooterComponent={
-          <>
-            {/* Show streaming message in progress */}
-            {isStreaming && streamingText && (
-              <View
-                style={[styles.messageContainer, styles.modelMessageContainer]}
-              >
-                <View style={[styles.messageBubble, styles.modelBubble]}>
-                  {streamingText
-                    .split("\n")
-                    .filter((line) => line.trim() !== "")
-                    .map((line, i) => (
-                      <Text key={i} style={styles.messageText}>
-                        {line}
-                      </Text>
-                    ))}
-                </View>
-              </View>
-            )}
-            {/* Show loading indicator when checking scope or initializing */}
-            {(isLoading || (isStreaming && !streamingText)) && (
-              <View
-                style={[styles.messageContainer, styles.modelMessageContainer]}
-              >
-                <View style={[styles.messageBubble, styles.modelBubble]}>
-                  <ActivityIndicator color="#1B3A2F" />
-                </View>
-              </View>
-            )}
-          </>
-        }
-      />
-
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={input}
-          onChangeText={setInput}
-          placeholder="Type your message..."
-          placeholderTextColor="rgba(27, 58, 47, 0.6)"
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-          editable={!isLoading && !isStreaming}
-          multiline
-          maxLength={1000}
-        />
-        <TouchableOpacity
-          onPress={handleSend}
-          disabled={isLoading || isStreaming || !input.trim()}
-          style={[
-            styles.sendButton,
-            (!input.trim() || isLoading || isStreaming) &&
-              styles.sendButtonDisabled,
+    <>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item, index) => index.toString()}
+          contentContainerStyle={[
+            styles.messagesList,
+            messages.length === 0 && styles.emptyList,
           ]}
-          activeOpacity={0.7}
-        >
-          <SendIcon />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+          ListEmptyComponent={renderEmptyState}
+          ListFooterComponent={
+            <>
+              {/* Show streaming message in progress */}
+              {isStreaming && streamingText && (
+                <View
+                  style={[styles.messageContainer, styles.modelMessageContainer]}
+                >
+                  <View style={[styles.messageBubble, styles.modelBubble]}>
+                    {streamingText
+                      .split("\n")
+                      .filter((line) => line.trim() !== "")
+                      .map((line, i) => (
+                        <Text key={i} style={styles.messageText}>
+                          {line}
+                        </Text>
+                      ))}
+                  </View>
+                </View>
+              )}
+              {/* Show loading indicator when checking scope or initializing */}
+              {(isLoading || (isStreaming && !streamingText)) && (
+                <View
+                  style={[styles.messageContainer, styles.modelMessageContainer]}
+                >
+                  <View style={[styles.messageBubble, styles.modelBubble]}>
+                    <ActivityIndicator color="#1B3A2F" />
+                  </View>
+                </View>
+              )}
+            </>
+          }
+        />
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={input}
+            onChangeText={setInput}
+            placeholder="Type your message..."
+            placeholderTextColor="rgba(27, 58, 47, 0.6)"
+            onSubmitEditing={handleSend}
+            returnKeyType="send"
+            editable={!isLoading && !isStreaming}
+            multiline
+            maxLength={1000}
+          />
+          <TouchableOpacity
+            onPress={handleSend}
+            disabled={isLoading || isStreaming || !input.trim()}
+            style={[
+              styles.sendButton,
+              (!input.trim() || isLoading || isStreaming) &&
+                styles.sendButtonDisabled,
+            ]}
+            activeOpacity={0.7}
+          >
+            <SendIcon />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* FindCare Modal */}
+      <FindCareModal
+        visible={findCareModalVisible}
+        onClose={() => setFindCareModalVisible(false)}
+        providers={careProviders}
+        loading={findCareLoading}
+      />
+    </>
   );
 };
 

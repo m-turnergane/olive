@@ -211,7 +211,7 @@ export async function sendMessageStream(
   onToken: (token: string) => void,
   onError?: (error: Error) => void,
   signal?: AbortSignal
-): Promise<void> {
+): Promise<any[] | undefined> {
   try {
     // Get JWT token for authentication
     const {
@@ -249,13 +249,14 @@ export async function sendMessageStream(
       throw new ChatServiceError(errorMessage, "HTTP_ERROR", response.status);
     }
 
-    // If server chose non-streaming (debug mode), it returns JSON {text}
+    // If server chose non-streaming (debug mode or tool calls), it returns JSON {text, tools}
     if (response.headers.get("Content-Type")?.includes("application/json")) {
       const j = await response.json();
       if (j?.text) {
         onToken(j.text); // one-shot append
       }
-      return;
+      // Return tool results if present (for modal display)
+      return j?.tools || undefined;
     }
 
     // Otherwise expect SSE stream
