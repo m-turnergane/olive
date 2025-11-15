@@ -480,40 +480,47 @@ npm install
 This is the most common streaming issue. Solutions:
 
 1. **Verify Expo fetch is being used** (✅ Fixed in latest version)
+
    - Client now uses `expo/fetch` instead of global `fetch`
    - This enables proper ReadableStream support in React Native
 
 2. **Check Edge Function logs**
+
    ```bash
    # View real-time logs
    supabase functions logs chat-stream --follow
    ```
-   
+
    Look for:
+
    - OpenAI API errors (model not found, auth issues)
    - Server-side errors before stream starts
    - Response Content-Type header (should be `text/event-stream`)
 
 3. **Test with non-streaming mode first**
+
    ```bash
    # Set on Supabase dashboard or via CLI
    supabase secrets set CHAT_STREAM=false
    ```
-   
+
    If non-streaming works but streaming doesn't:
+
    - Issue is in SSE parsing or stream handling
    - Check network inspector in dev tools
    - Verify no proxy/firewall is blocking SSE
 
 4. **Verify OpenAI credentials**
+
    ```bash
    # Check secrets are set
    supabase secrets list
-   
+
    # Should show OPENAI_API_KEY (value hidden)
    ```
-   
+
    Test OpenAI key directly:
+
    ```bash
    curl https://api.openai.com/v1/models \
      -H "Authorization: Bearer YOUR_KEY"
@@ -528,7 +535,7 @@ This is the most common streaming issue. Solutions:
 
 - **Expected behavior**: Some batching is normal due to network buffering
 - **Verify**: OpenAI is streaming (check logs for `data:` events)
-- **Improve**: 
+- **Improve**:
   - Use faster model (nano models are quickest)
   - Reduce system prompt length
   - Check network latency
@@ -537,20 +544,24 @@ This is the most common streaming issue. Solutions:
 
 - **Cause**: AbortController not cleaned up properly
 - **Solution**: Ensure you're canceling previous requests:
+
   ```typescript
-  import { createTimeoutController, cleanupController } from './services/chatService';
-  
+  import {
+    createTimeoutController,
+    cleanupController,
+  } from "./services/chatService";
+
   // Before new request
   if (currentController) {
     cleanupController(currentController);
   }
-  
+
   // Create new controller with 60s timeout
   const controller = createTimeoutController(60000);
-  
+
   await sendMessageStream(
-    conversationId, 
-    text, 
+    conversationId,
+    text,
     onToken,
     onError,
     controller.signal
@@ -560,15 +571,17 @@ This is the most common streaming issue. Solutions:
 **Problem: Empty or partial responses**
 
 1. **Check conversation context size**
+
    - OpenAI has token limits per request
    - Summaries help compress context
    - Latest messages + summary should fit in model's context window
 
 2. **Verify messages are persisted**
+
    ```sql
    -- In Supabase SQL editor
-   SELECT role, content, created_at 
-   FROM messages 
+   SELECT role, content, created_at
+   FROM messages
    WHERE conversation_id = 'your-conv-id'
    ORDER BY created_at DESC
    LIMIT 10;
@@ -592,16 +605,19 @@ This is the most common streaming issue. Solutions:
 **Debug Mode: Full Request/Response Logging**
 
 1. Set non-streaming mode:
+
    ```bash
    supabase secrets set CHAT_STREAM=false
    ```
 
 2. Check Edge Function logs:
+
    ```bash
    supabase functions logs chat-stream --follow
    ```
 
 3. Send a test message and inspect logs for:
+
    - Full OpenAI request payload
    - Complete response text
    - Any errors or warnings
@@ -614,25 +630,28 @@ This is the most common streaming issue. Solutions:
 **Testing Streaming Locally**
 
 1. Run functions locally:
+
    ```bash
    cd supabase
    supabase functions serve --env-file .env.local
    ```
 
 2. Update client to point to local functions:
+
    ```typescript
    // Temporarily in services/chatService.ts
-   const FN_BASE = 'http://localhost:54321/functions/v1';
+   const FN_BASE = "http://localhost:54321/functions/v1";
    ```
 
 3. Test with curl:
+
    ```bash
    curl -N http://localhost:54321/functions/v1/chat-stream \
      -H "Authorization: Bearer YOUR_JWT" \
      -H "Content-Type: application/json" \
      -d '{"conversation_id":"test-uuid","user_text":"Hello"}'
    ```
-   
+
    You should see `data:` events streaming in real-time.
 
 **Still Having Issues?**

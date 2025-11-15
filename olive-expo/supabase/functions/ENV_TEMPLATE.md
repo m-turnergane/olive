@@ -7,6 +7,7 @@ This document describes all environment variables required for Olive's backend a
 ### Required Variables
 
 **`OPENAI_API_KEY`** (Required)
+
 - Your OpenAI API key with access to chat/responses endpoints
 - Never expose this client-side
 - Get from: https://platform.openai.com/api-keys
@@ -15,11 +16,13 @@ This document describes all environment variables required for Olive's backend a
 ### Optional Configuration
 
 **`OPENAI_CHAT_MODEL`** (Default: `gpt-5-nano`)
+
 - Which OpenAI model to use for chat completions
 - Options: `gpt-5-nano`, `gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`
 - Nano models are fast and cost-effective for conversational support
 
 **`OPENAI_API_MODE`** (Default: `chat`)
+
 - Which OpenAI API endpoint to use
 - Options:
   - `chat`: Chat Completions API (classic, well-documented)
@@ -27,6 +30,7 @@ This document describes all environment variables required for Olive's backend a
 - Use `chat` unless you need Responses API features
 
 **`CHAT_STREAM`** (Default: `true`)
+
 - Whether to stream responses token-by-token
 - Options:
   - `true`: Stream tokens (production, better UX)
@@ -34,6 +38,7 @@ This document describes all environment variables required for Olive's backend a
 - Set to `false` during development to debug without streaming complexity
 
 **`OPENAI_EMBED_MODEL`** (Default: `text-embedding-3-small`)
+
 - Embedding model for semantic search (future feature)
 - Not currently used, reserved for memory/search enhancements
 
@@ -114,11 +119,13 @@ EXPO_PUBLIC_SENTRY_DSN=https://xxxxx@sentry.io/xxxxx
 ## Environment Variable Checklist
 
 ### Before Running Locally
+
 - [ ] Created `supabase/.env.local` with `OPENAI_API_KEY`
 - [ ] Created `olive-expo/.env` with Supabase URL and anon key
 - [ ] Verified `.env` files are in `.gitignore`
 
 ### Before Deploying to Production
+
 - [ ] Set all Supabase secrets via dashboard/CLI
 - [ ] Deployed all Edge Functions
 - [ ] Updated Expo environment variables in EAS
@@ -128,21 +135,25 @@ EXPO_PUBLIC_SENTRY_DSN=https://xxxxx@sentry.io/xxxxx
 ## Troubleshooting
 
 **"No response body" error in streaming**
+
 - Ensure `CHAT_STREAM=true` on server
 - Verify client uses `expo/fetch` (not global `fetch`)
 - Check server logs for OpenAI API errors
 
 **"Model not found" error**
+
 - Verify `OPENAI_CHAT_MODEL` is set to a valid, accessible model
 - Check your OpenAI account has access to the specified model
 - Try `gpt-3.5-turbo` as a fallback
 
 **"Unauthorized" errors**
+
 - Check `OPENAI_API_KEY` is set and valid
 - Verify Supabase JWT is being passed in Authorization header
 - Ensure user is authenticated on client before calling functions
 
 **Functions not receiving environment variables**
+
 - Restart Supabase functions after changing secrets
 - Verify secrets with `supabase secrets list`
 - Check function logs with `supabase functions logs <function-name>`

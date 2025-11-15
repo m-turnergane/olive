@@ -41,7 +41,9 @@ const SendIcon = () => (
 );
 
 const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
-  const [conversationId, setConversationId] = useState<string | null>(initialConversationId || null);
+  const [conversationId, setConversationId] = useState<string | null>(
+    initialConversationId || null
+  );
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);

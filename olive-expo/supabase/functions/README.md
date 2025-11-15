@@ -400,6 +400,61 @@ supabase functions logs summarize --filter error
 
 ---
 
+## Troubleshooting
+
+### Error: 502 + JSON Error Response
+
+**Symptom**: App shows error like "model_not_found" or "invalid_model"
+
+**Cause**: The model name doesn't exist or you don't have access to it.
+
+**Solution**:
+1. Check OpenAI docs for the correct model name
+2. Try `gpt-4o` or `gpt-4o-mini` as fallback:
+   ```bash
+   supabase secrets set OPENAI_CHAT_MODEL=gpt-4o
+   ```
+3. If using newer models, ensure `OPENAI_API_MODE` is set correctly:
+   ```bash
+   supabase secrets set OPENAI_API_MODE=chat  # or 'responses'
+   ```
+
+### Error: "No response body" in Client
+
+**Symptom**: Client throws `NO_BODY` error
+
+**Cause**: Edge Function failed before streaming, returning JSON error instead of SSE stream.
+
+**Solution**:
+1. Check Edge Function logs in Supabase Dashboard
+2. Look for OpenAI API errors (model name, auth, etc.)
+3. Enable debug mode to bypass streaming:
+   ```bash
+   supabase secrets set CHAT_STREAM=false
+   ```
+4. Fix the underlying issue, then re-enable streaming
+
+### Debug Mode (Non-Streaming)
+
+For quick troubleshooting, disable streaming to get plain JSON responses:
+
+```bash
+supabase secrets set CHAT_STREAM=false
+```
+
+This makes the function return `{text: "..."}` as JSON instead of SSE, making errors easier to diagnose.
+
+### Model Configuration Table
+
+| Model | API Mode | Notes |
+|-------|----------|-------|
+| `gpt-4o` | `chat` | Stable, widely available |
+| `gpt-4o-mini` | `chat` | Faster, cheaper |
+| `gpt-4-turbo` | `chat` | Legacy, still supported |
+| `gpt-5-nano` | `chat` or `responses` | Check OpenAI docs for correct mode |
+
+---
+
 ## Security
 
 ✅ **Row Level Security (RLS)**: All database queries respect user ownership
