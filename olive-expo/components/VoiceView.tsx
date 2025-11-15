@@ -63,7 +63,7 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   // Internal transcript buffers (not displayed, only for persistence)
   const currentUserTranscript = useRef<string>("");
   const currentAssistantTranscript = useRef<string>("");
-  
+
   // Turn management to prevent duplicate response.create
   const currentTurnId = useRef<string>("");
   const hasTriggeredResponse = useRef<boolean>(false);
@@ -240,7 +240,10 @@ const VoiceView: React.FC<VoiceViewProps> = ({
       // Streaming - accumulate but don't display
       currentAssistantTranscript.current += text;
       if (__DEV__) {
-        console.debug("[VoiceView] Assistant response (partial):", currentAssistantTranscript.current);
+        console.debug(
+          "[VoiceView] Assistant response (partial):",
+          currentAssistantTranscript.current
+        );
       }
     }
   };
@@ -251,39 +254,50 @@ const VoiceView: React.FC<VoiceViewProps> = ({
 
   const handleUserTurnEnd = () => {
     console.log("[VoiceView] User turn ended (VAD detected)");
-    
+
     // Trigger response.create exactly once per turn
     if (!hasTriggeredResponse.current && realtimeConnection.current) {
       hasTriggeredResponse.current = true;
       realtimeConnection.current.triggerResponse();
-      console.log("[VoiceView] Triggered response.create for turn:", currentTurnId.current);
+      console.log(
+        "[VoiceView] Triggered response.create for turn:",
+        currentTurnId.current
+      );
     }
   };
 
   const handleResponseComplete = async () => {
     console.log("[VoiceView] Response completed - persisting transcripts");
-    
+
     try {
       const convId = await getOrCreateConversation();
-      
+
       // Persist user transcript
       if (currentUserTranscript.current.trim()) {
-        await chatService.persistMessage(convId, "user", currentUserTranscript.current);
+        await chatService.persistMessage(
+          convId,
+          "user",
+          currentUserTranscript.current
+        );
         console.log("[VoiceView] User message persisted");
       }
-      
+
       // Persist assistant response
       if (currentAssistantTranscript.current.trim()) {
-        await chatService.persistMessage(convId, "assistant", currentAssistantTranscript.current);
+        await chatService.persistMessage(
+          convId,
+          "assistant",
+          currentAssistantTranscript.current
+        );
         console.log("[VoiceView] Assistant message persisted");
       }
 
       // Trigger title generation after first complete exchange
       const { data: messages } = await supabase
-        .from('messages')
-        .select('id')
-        .eq('conversation_id', convId);
-      
+        .from("messages")
+        .select("id")
+        .eq("conversation_id", convId);
+
       if (messages && messages.length <= 2) {
         triggerTitleGeneration(convId);
       }
@@ -293,7 +307,6 @@ const VoiceView: React.FC<VoiceViewProps> = ({
       currentAssistantTranscript.current = "";
       currentTurnId.current = Date.now().toString();
       hasTriggeredResponse.current = false;
-      
     } catch (error) {
       console.error("[VoiceView] Failed to persist messages:", error);
     }

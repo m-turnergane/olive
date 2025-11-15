@@ -12,7 +12,7 @@ All requirements for **Task A: Voice (OpenAI Realtime)** have been implemented:
 ✅ **Mic permission handling** on entering Voice tab (not auto-record)  
 ✅ **Orb interaction** - tap to start/stop listening with animated states  
 ✅ **Transcript persistence** to `messages` table (seamless Chat/Voice continuity)  
-✅ **System prompt injection** (Thera voice-optimized prompt)  
+✅ **System prompt injection** (Olive voice-optimized prompt)  
 ✅ **Male/female voice selection** via user preferences (default female/nova)
 
 ---
@@ -26,7 +26,7 @@ All requirements for **Task A: Voice (OpenAI Realtime)** have been implemented:
 - Mints ephemeral tokens for WebRTC sessions
 - Reads user voice preference from `user_preferences.data.voice_gender`
 - Supports both OpenAI and Azure Realtime endpoints
-- Implements Thera system prompt (voice-optimized, <16k tokens)
+- Implements Olive system prompt (voice-optimized, <16k tokens)
 - Enforces `REALTIME_ENABLE` feature flag (fail closed)
 - Returns `client_secret.value` token + session metadata
 
@@ -228,7 +228,7 @@ Orb animation driven by `useOrbAnimation` hook with boolean fallback (RMS not av
 
 ---
 
-## 📊 Thera System Prompt (Voice-Optimized)
+## 📊 Olive System Prompt (Voice-Optimized)
 
 ```
 You are "Olive", an AI mental health companion. You are empathetic,
@@ -459,7 +459,7 @@ All requirements satisfied:
 - ✅ Mic permission handling (on-demand, not auto)
 - ✅ Orb tap-to-start/stop with animation
 - ✅ Transcript persistence (user + assistant)
-- ✅ Thera system prompt injection
+- ✅ Olive system prompt injection
 - ✅ Male/female voice selection
 
 **Ready for:** Task B (Auto-Titles) and Task C (MCP Find-Care Tool).

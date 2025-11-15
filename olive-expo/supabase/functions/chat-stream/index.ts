@@ -17,11 +17,57 @@ const OPENAI_API_MODE = (
   Deno.env.get("OPENAI_API_MODE") ?? "chat"
 ).toLowerCase(); // 'chat' | 'responses'
 const CHAT_STREAM = (Deno.env.get("CHAT_STREAM") ?? "true") === "true";
+const MCP_FIND_CARE_URL =
+  Deno.env.get("MCP_FIND_CARE_URL") ?? "http://localhost:3001";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
+};
+
+// ============================================================================
+// Tool Definitions
+// ============================================================================
+
+const FIND_CARE_TOOL = {
+  type: "function",
+  function: {
+    name: "find_care",
+    description:
+      "Find mental health care providers (therapists, psychiatrists, counselors) near the user's location, ranked by Google reviews. Use this when user asks for help finding professional care, mentions needing a therapist, or expresses interest in local mental health resources.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            'Search query or concern type (e.g., "anxiety", "teen therapy", "grief counseling", "psychiatrist")',
+        },
+        radius_km: {
+          type: "number",
+          description:
+            "Search radius in kilometers (will use user preference if not specified)",
+        },
+        top_k: {
+          type: "number",
+          description: "Number of results to return (default: 5)",
+          default: 5,
+        },
+        open_now: {
+          type: "boolean",
+          description: "Filter for currently open providers (default: false)",
+          default: false,
+        },
+        min_rating: {
+          type: "number",
+          description: "Minimum Google rating (default: 4.3)",
+          default: 4.3,
+        },
+      },
+      required: [],
+    },
+  },
 };
 
 // ============================================================================
@@ -53,6 +99,8 @@ function buildOpenAIRequest(
       model: OPENAI_CHAT_MODEL,
       messages,
       stream: CHAT_STREAM,
+      tools: [FIND_CARE_TOOL], // Enable find_care tool
+      tool_choice: "auto", // Let model decide when to use tools
     },
   };
 }
@@ -109,6 +157,65 @@ async function callOpenAI(messages: Array<{ role: string; content: string }>) {
 
   // Streaming path
   return { kind: "stream", stream: res.body! } as const;
+}
+
+// ============================================================================
+// MCP Tool Handlers
+// ============================================================================
+
+/**
+ * Call MCP find_care server
+ */
+async function invokeFindCare(
+  args: any,
+  userLocation?: { city?: string; lat?: number; lng?: number },
+  searchRadius?: number
+): Promise<any> {
+  try {
+    // Merge user preferences with tool arguments
+    const mcpArgs = {
+      query: args.query || "therapist mental health",
+      location: userLocation
+        ? userLocation.lat && userLocation.lng
+          ? { lat: userLocation.lat, lng: userLocation.lng }
+          : { city: userLocation.city || "Mississauga, ON" }
+        : { city: "Mississauga, ON" },
+      radius_km: args.radius_km || searchRadius || 35,
+      top_k: args.top_k || 5,
+      open_now: args.open_now || false,
+      min_rating: args.min_rating || 4.3,
+    };
+
+    console.log("🔍 Calling MCP find_care:", JSON.stringify(mcpArgs));
+
+    const response = await fetch(`${MCP_FIND_CARE_URL}/invoke`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tool: "find_care",
+        arguments: mcpArgs,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`MCP server error: ${response.status} - ${error}`);
+    }
+
+    const result = await response.json();
+    console.log(
+      "✅ MCP find_care returned:",
+      result.providers?.length || 0,
+      "providers"
+    );
+
+    return result;
+  } catch (error) {
+    console.error("❌ MCP find_care error:", error);
+    throw error;
+  }
 }
 
 // ============================================================================
@@ -291,6 +398,47 @@ Deno.serve(async (req) => {
         });
       } catch (e) {
         console.error("Summarizer failed:", e);
+      }
+
+      // Auto-generate title after first full exchange (best-effort)
+      try {
+        const { data: conv } = await supabase
+          .from("conversations")
+          .select("title")
+          .eq("id", conversation_id)
+          .single();
+
+        const { data: msgCount } = await supabase
+          .from("messages")
+          .select("id", { count: "exact" })
+          .eq("conversation_id", conversation_id);
+
+        const needsTitle =
+          !conv?.title ||
+          conv.title === "Untitled conversation" ||
+          conv.title === "New chat";
+        const hasFullExchange = msgCount && msgCount.length >= 2;
+
+        if (needsTitle && hasFullExchange) {
+          console.log(
+            "🔍 Auto-generating title for conversation:",
+            conversation_id
+          );
+          await fetch(
+            new URL(req.url).origin + "/functions/v1/generate-title",
+            {
+              method: "POST",
+              headers: {
+                ...corsHeaders,
+                Authorization: req.headers.get("Authorization")!,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ conversation_id }),
+            }
+          );
+        }
+      } catch (e) {
+        console.error("Title generation failed:", e);
       }
       console.log("🔍 Returning JSON response with text");
       return new Response(JSON.stringify({ text: full }), {
@@ -497,6 +645,23 @@ function buildRuntimeFacts(
 
   if (prefs?.tone) {
     facts.push(`User prefers a ${prefs.tone} conversational tone.`);
+  }
+
+  // Location for find_care tool
+  if (prefs?.location) {
+    if (prefs.location.city) {
+      facts.push(`User location: ${prefs.location.city}.`);
+    } else if (prefs.location.lat && prefs.location.lng) {
+      facts.push(
+        `User location: (${prefs.location.lat.toFixed(
+          4
+        )}, ${prefs.location.lng.toFixed(4)}).`
+      );
+    }
+
+    if (prefs.search_radius_km) {
+      facts.push(`Preferred search radius: ${prefs.search_radius_km}km.`);
+    }
   }
 
   if (Array.isArray(memories) && memories.length > 0) {

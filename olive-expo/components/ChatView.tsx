@@ -22,6 +22,7 @@ import {
   persistMessage,
   type Message,
 } from "../services/chatService";
+import { supabase } from "../services/supabaseService";
 
 interface ChatViewProps {
   user: User;
@@ -51,6 +52,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
   const [streamingText, setStreamingText] = useState("");
   const flatListRef = useRef<FlatList>(null);
   const welcomeOpacity = useRef(new Animated.Value(1)).current;
+  const hasTitleGenerationAttempted = useRef<Set<string>>(new Set());
 
   // Update conversationId when initialConversationId changes
   useEffect(() => {
@@ -58,6 +60,40 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
       setConversationId(initialConversationId);
     }
   }, [initialConversationId]);
+
+  /**
+   * Trigger title generation for a conversation (client-side safety net)
+   * Only runs once per conversation to avoid duplicate requests
+   */
+  const triggerTitleGeneration = async (convId: string) => {
+    if (hasTitleGenerationAttempted.current.has(convId)) {
+      return; // Already attempted for this conversation
+    }
+
+    try {
+      hasTitleGenerationAttempted.current.add(convId);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-title`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ conversation_id: convId }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Title generated:', result.title);
+      }
+    } catch (error) {
+      console.error('Failed to trigger title generation:', error);
+    }
+  };
 
   // Load conversation history on mount (if conversation exists)
   useEffect(() => {
@@ -201,6 +237,25 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
             fullAssistantResponse
           );
           console.log("✅ Assistant message persisted to database");
+
+          // Client-side safety net: trigger title generation after first full exchange
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('title')
+            .eq('id', currentConversationId)
+            .single();
+
+          const { data: msgCount } = await supabase
+            .from('messages')
+            .select('id')
+            .eq('conversation_id', currentConversationId);
+
+          const needsTitle = !conv?.title || conv.title === 'Untitled conversation' || conv.title === 'New chat';
+          const hasFullExchange = msgCount && msgCount.length >= 2;
+
+          if (needsTitle && hasFullExchange) {
+            triggerTitleGeneration(currentConversationId);
+          }
         } catch (error) {
           console.error("Failed to persist assistant message:", error);
           // Message is still in UI, so user can see it

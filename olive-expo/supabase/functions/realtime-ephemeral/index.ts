@@ -16,14 +16,11 @@ const REALTIME_ENABLE = Deno.env.get("REALTIME_ENABLE") ?? "true";
 // @ts-ignore
 const REALTIME_SERVER = Deno.env.get("REALTIME_SERVER") ?? "openai";
 // @ts-ignore - Deno global
-const REALTIME_MODEL =
-  Deno.env.get("REALTIME_MODEL") ?? "gpt-realtime-mini";
+const REALTIME_MODEL = Deno.env.get("REALTIME_MODEL") ?? "gpt-realtime-mini";
 // @ts-ignore - Deno global
-const REALTIME_VOICE_DEFAULT =
-  Deno.env.get("REALTIME_VOICE_DEFAULT") ?? "sage";
+const REALTIME_VOICE_DEFAULT = Deno.env.get("REALTIME_VOICE_DEFAULT") ?? "sage";
 // @ts-ignore - Deno global
-const REALTIME_VOICE_FEMALE =
-  Deno.env.get("REALTIME_VOICE_FEMALE") ?? "sage";
+const REALTIME_VOICE_FEMALE = Deno.env.get("REALTIME_VOICE_FEMALE") ?? "sage";
 // @ts-ignore - Deno global
 const REALTIME_VOICE_MALE = Deno.env.get("REALTIME_VOICE_MALE") ?? "alloy";
 // @ts-ignore - Deno global
@@ -45,10 +42,10 @@ export const corsHeaders = {
 };
 
 // ============================================================================
-// Thera System Prompt (Voice-optimized)
+// Olive System Prompt (Voice-optimized)
 // ============================================================================
 
-const THERA_SYSTEM_PROMPT = `You are "Olive", an AI mental health companion. You are empathetic, confidential, culturally sensitive, and supportive. You are **not** a licensed clinician.
+const OLIVE_SYSTEM_PROMPT = `You are "Olive", an AI mental health companion. You are empathetic, confidential, culturally sensitive, and supportive. You are **not** a licensed clinician.
 
 Core style: warm, validating, collaborative; brief, natural spoken language; avoid jargon. Offer evidence-based micro-skills (CBT reframing, grounding, paced breathing, behavioral activation, self-compassion) as suggestions, not commands.
 
@@ -175,7 +172,7 @@ Deno.serve(async (req) => {
       model: REALTIME_MODEL,
       voice: selectedVoice,
       modalities: ["audio", "text"],
-      instructions: THERA_SYSTEM_PROMPT.substring(0, 16000), // Trim to ~16k tokens
+      instructions: OLIVE_SYSTEM_PROMPT.substring(0, 16000), // Trim to ~16k tokens
       turn_detection: {
         type: REALTIME_TURN_DETECTION,
         threshold: 0.5,
