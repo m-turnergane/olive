@@ -33,7 +33,7 @@ All requirements for **Task A: Voice (OpenAI Realtime)** have been implemented:
 **Key Features:**
 
 - JWT authentication required
-- Reads voice preference: `male` → `alloy`, `female` → `nova`
+- Reads voice preference: `male` → `alloy`, `female` → `shimmer`
 - Turn detection: `server_vad` (threshold: 0.5, silence: 900ms)
 - Logging respects `LOG_LEVEL` env var
 
@@ -145,8 +145,8 @@ interface VoiceViewProps {
 | `REALTIME_ENABLE`          | `true`                                    | Enable/disable voice features                       |
 | `REALTIME_SERVER`          | `openai`                                  | API provider: `openai` or `azure`                   |
 | `REALTIME_MODEL`           | `gpt-4o-mini-realtime-preview-2024-12-17` | Realtime model name                                 |
-| `REALTIME_VOICE_DEFAULT`   | `nova`                                    | Default fallback voice                              |
-| `REALTIME_VOICE_FEMALE`    | `nova`                                    | Female voice option                                 |
+| `REALTIME_VOICE_DEFAULT`   | `shimmer`                                 | Default fallback voice                              |
+| `REALTIME_VOICE_FEMALE`    | `shimmer`                                 | Female voice option                                 |
 | `REALTIME_VOICE_MALE`      | `alloy`                                   | Male voice option                                   |
 | `REALTIME_TURN_DETECTION`  | `server_vad`                              | Turn detection mode                                 |
 | `AZURE_OPENAI_ENDPOINT`    | -                                         | Azure endpoint (if `REALTIME_SERVER=azure`)         |

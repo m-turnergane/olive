@@ -76,13 +76,17 @@ export async function getEphemeralToken(): Promise<EphemeralTokenResponse> {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || `HTTP ${response.status}`);
+      const errorMessage = errorData.message || errorData.error || `HTTP ${response.status}`;
+      console.error('[Realtime] Ephemeral token error:', errorData);
+      throw new Error(errorMessage);
     }
 
     const data: EphemeralTokenResponse = await response.json();
 
     if (!data.ok || !data.token) {
-      throw new Error(data.error || 'Failed to get ephemeral token');
+      const errorMessage = data.error || 'Failed to get ephemeral token';
+      console.error('[Realtime] Invalid token response:', data);
+      throw new Error(errorMessage);
     }
 
     return data;

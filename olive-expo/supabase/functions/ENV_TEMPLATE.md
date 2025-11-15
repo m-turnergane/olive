@@ -62,20 +62,20 @@ This document describes all environment variables required for Olive's backend a
 - Options: `gpt-4o-mini-realtime-preview-2024-12-17`, `gpt-4o-realtime-preview`
 - Azure: use `gpt-realtime-mini` or similar deployment names
 
-**`REALTIME_VOICE_DEFAULT`** (Default: `nova`)
+**`REALTIME_VOICE_DEFAULT`** (Default: `shimmer`)
 
 - Default voice for Realtime API
 - Used when user has no voice preference set
 
-**`REALTIME_VOICE_FEMALE`** (Default: `nova`)
+**`REALTIME_VOICE_FEMALE`** (Default: `shimmer`)
 
 - Female voice option
-- Options: `nova`, `shimmer`
+- Valid options: `shimmer` (warm), `sage` (calm), `coral` (friendly), `ballad` (smooth), `verse` (expressive)
 
 **`REALTIME_VOICE_MALE`** (Default: `alloy`)
 
 - Male voice option
-- Options: `alloy`, `echo`, `fable`, `onyx`
+- Valid options: `alloy` (neutral), `echo` (resonant), `ash` (mellow), `marin` (deep), `cedar` (rich)
 
 **`REALTIME_TURN_DETECTION`** (Default: `server_vad`)
 
@@ -118,8 +118,8 @@ OPENAI_EMBED_MODEL=text-embedding-3-small
 REALTIME_ENABLE=true
 REALTIME_SERVER=openai
 REALTIME_MODEL=gpt-4o-mini-realtime-preview-2024-12-17
-REALTIME_VOICE_DEFAULT=nova
-REALTIME_VOICE_FEMALE=nova
+REALTIME_VOICE_DEFAULT=shimmer
+REALTIME_VOICE_FEMALE=shimmer
 REALTIME_VOICE_MALE=alloy
 REALTIME_TURN_DETECTION=server_vad
 
@@ -155,8 +155,8 @@ supabase secrets set CHAT_STREAM=true
 supabase secrets set REALTIME_ENABLE=true
 supabase secrets set REALTIME_SERVER=openai
 supabase secrets set REALTIME_MODEL=gpt-4o-mini-realtime-preview-2024-12-17
-supabase secrets set REALTIME_VOICE_DEFAULT=nova
-supabase secrets set REALTIME_VOICE_FEMALE=nova
+supabase secrets set REALTIME_VOICE_DEFAULT=shimmer
+supabase secrets set REALTIME_VOICE_FEMALE=shimmer
 supabase secrets set REALTIME_VOICE_MALE=alloy
 supabase secrets set REALTIME_TURN_DETECTION=server_vad
 
