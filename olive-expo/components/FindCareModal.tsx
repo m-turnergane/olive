@@ -76,9 +76,7 @@ const FindCareModal: React.FC<FindCareModalProps> = ({
             {loading && (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#5E8C61" />
-                <Text style={styles.loadingText}>
-                  Okay, searching now...
-                </Text>
+                <Text style={styles.loadingText}>Okay, searching now...</Text>
               </View>
             )}
 
@@ -135,9 +133,7 @@ const FindCareModal: React.FC<FindCareModalProps> = ({
                         style={[styles.actionButton, styles.callButton]}
                         onPress={() => handleCall(provider.phone!)}
                       >
-                        <Text style={styles.actionButtonText}>
-                          📞 Call
-                        </Text>
+                        <Text style={styles.actionButtonText}>📞 Call</Text>
                       </TouchableOpacity>
                     )}
 
@@ -157,9 +153,7 @@ const FindCareModal: React.FC<FindCareModalProps> = ({
           {/* Footer */}
           {!loading && providers.length > 0 && (
             <View style={styles.footer}>
-              <Text style={styles.footerText}>
-                Powered by Google Places
-              </Text>
+              <Text style={styles.footerText}>Powered by Google Places</Text>
             </View>
           )}
         </View>
@@ -335,4 +329,3 @@ const styles = StyleSheet.create({
 });
 
 export default FindCareModal;
-

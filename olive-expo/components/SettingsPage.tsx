@@ -249,7 +249,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ user }) => {
             )}
           </View>
         )}
-          </View>
+        </View>
         </ScrollView>
       )}
     </View>

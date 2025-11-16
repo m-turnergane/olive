@@ -54,7 +54,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
   const flatListRef = useRef<FlatList>(null);
   const welcomeOpacity = useRef(new Animated.Value(1)).current;
   const hasTitleGenerationAttempted = useRef<Set<string>>(new Set());
-  
+
   // FindCare modal state
   const [findCareModalVisible, setFindCareModalVisible] = useState(false);
   const [careProviders, setCareProviders] = useState<any[]>([]);
@@ -78,26 +78,31 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
 
     try {
       hasTitleGenerationAttempted.current.add(convId);
-      
-      const { data: { session } } = await supabase.auth.getSession();
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session?.access_token) return;
 
       const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-title`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ conversation_id: convId }),
-      });
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/generate-title`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ conversation_id: convId }),
+        }
+      );
 
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ Title generated:', result.title);
+        console.log("✅ Title generated:", result.title);
       }
     } catch (error) {
-      console.error('Failed to trigger title generation:', error);
+      console.error("Failed to trigger title generation:", error);
     }
   };
 
@@ -256,17 +261,20 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
 
           // Client-side safety net: trigger title generation after first full exchange
           const { data: conv } = await supabase
-            .from('conversations')
-            .select('title')
-            .eq('id', currentConversationId)
+            .from("conversations")
+            .select("title")
+            .eq("id", currentConversationId)
             .single();
 
           const { data: msgCount } = await supabase
-            .from('messages')
-            .select('id')
-            .eq('conversation_id', currentConversationId);
+            .from("messages")
+            .select("id")
+            .eq("conversation_id", currentConversationId);
 
-          const needsTitle = !conv?.title || conv.title === 'Untitled conversation' || conv.title === 'New chat';
+          const needsTitle =
+            !conv?.title ||
+            conv.title === "Untitled conversation" ||
+            conv.title === "New chat";
           const hasFullExchange = msgCount && msgCount.length >= 2;
 
           if (needsTitle && hasFullExchange) {
@@ -366,7 +374,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
               {/* Show streaming message in progress */}
               {isStreaming && streamingText && (
                 <View
-                  style={[styles.messageContainer, styles.modelMessageContainer]}
+                  style={[
+                    styles.messageContainer,
+                    styles.modelMessageContainer,
+                  ]}
                 >
                   <View style={[styles.messageBubble, styles.modelBubble]}>
                     {streamingText
@@ -383,7 +394,10 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
               {/* Show loading indicator when checking scope or initializing */}
               {(isLoading || (isStreaming && !streamingText)) && (
                 <View
-                  style={[styles.messageContainer, styles.modelMessageContainer]}
+                  style={[
+                    styles.messageContainer,
+                    styles.modelMessageContainer,
+                  ]}
                 >
                   <View style={[styles.messageBubble, styles.modelBubble]}>
                     <ActivityIndicator color="#1B3A2F" />

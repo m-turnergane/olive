@@ -105,10 +105,13 @@ function buildOpenAIRequest(
   };
 }
 
-async function callOpenAI(messages: Array<any>, streamMode: boolean = CHAT_STREAM) {
+async function callOpenAI(
+  messages: Array<any>,
+  streamMode: boolean = CHAT_STREAM
+) {
   const { url, body } = buildOpenAIRequest(messages);
   body.stream = streamMode; // Override stream based on parameter
-  
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -351,7 +354,7 @@ Deno.serve(async (req) => {
       "MODEL:",
       OPENAI_CHAT_MODEL
     );
-    
+
     let conversationMessages = [...openaiMessages];
     let toolCallLoop = 0;
     const MAX_TOOL_LOOPS = 3;
@@ -364,7 +367,7 @@ Deno.serve(async (req) => {
       const result = await callOpenAI(conversationMessages, useStreaming);
 
       console.log("🔍 OpenAI result kind:", result.kind, "loop:", toolCallLoop);
-      
+
       if (result.kind === "error") {
         console.error("OpenAI error:", JSON.stringify(result.error, null, 2));
         finalResult = result;
@@ -375,18 +378,24 @@ Deno.serve(async (req) => {
         // Streaming response - no tool calls expected in first streaming response
         // (We'd need to parse stream for tool calls, which is complex)
         // For MVP, return stream directly
-        console.log("🔍 Returning streaming response (no tool handling in stream mode)");
+        console.log(
+          "🔍 Returning streaming response (no tool handling in stream mode)"
+        );
         finalResult = result;
         break;
       }
 
       if (result.kind === "json") {
         const { data, text, toolCalls } = result;
-        
+
         // Check if model called any tools
-        if (toolCalls && toolCalls.length > 0 && toolCallLoop < MAX_TOOL_LOOPS - 1) {
+        if (
+          toolCalls &&
+          toolCalls.length > 0 &&
+          toolCallLoop < MAX_TOOL_LOOPS - 1
+        ) {
           console.log("🔍 Processing", toolCalls.length, "tool call(s)");
-          
+
           // Add assistant message with tool calls to conversation
           conversationMessages.push({
             role: "assistant",
@@ -398,7 +407,7 @@ Deno.serve(async (req) => {
           for (const toolCall of toolCalls) {
             const toolName = toolCall.function.name;
             const toolArgs = JSON.parse(toolCall.function.arguments || "{}");
-            
+
             console.log(`🔍 Executing tool: ${toolName}`, toolArgs);
 
             if (toolName === "find_care") {
@@ -408,7 +417,7 @@ Deno.serve(async (req) => {
                   prefs?.data?.location,
                   prefs?.data?.search_radius_km
                 );
-                
+
                 // Add tool result to conversation
                 conversationMessages.push({
                   role: "tool",
@@ -466,7 +475,7 @@ Deno.serve(async (req) => {
       const tools = result.toolResults || [];
       console.log("🔍 Non-streaming path - text length:", full.length);
       console.log("🔍 Tool results:", tools.length);
-      
+
       await supabase.rpc("add_message", {
         p_conversation_id: conversation_id,
         p_role: "assistant",
