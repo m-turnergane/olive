@@ -14,8 +14,18 @@ const useOrbAnimation = (
   const intensityRef = useRef(0);
 
   useEffect(() => {
+    // Guard against NaN and infinity - clamp amplitude to valid range
+    const clampedAmplitude = Number.isFinite(amplitude) 
+      ? Math.max(0, Math.min(1, amplitude)) 
+      : 0;
+
     // Smooth the amplitude changes with exponential moving average
-    smoothedAmplitude.current = smoothedAmplitude.current * 0.7 + amplitude * 0.3;
+    smoothedAmplitude.current = smoothedAmplitude.current * 0.7 + clampedAmplitude * 0.3;
+
+    // Ensure smoothed value is also finite
+    if (!Number.isFinite(smoothedAmplitude.current)) {
+      smoothedAmplitude.current = 0;
+    }
 
     if (isSpeaking || isModelSpeaking) {
       // Active speaking - higher intensity

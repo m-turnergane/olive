@@ -28,7 +28,10 @@
         "backgroundColor": "#BAC7B2"
       },
       "package": "com.olive.mentalhealth",
-      "permissions": ["RECORD_AUDIO", "INTERNET"],
+      "permissions": [
+        "RECORD_AUDIO",
+        "INTERNET"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
@@ -41,7 +44,8 @@
         {
           "microphonePermission": "Allow Olive to access your microphone for voice conversations."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "extra": {
       "eas": {

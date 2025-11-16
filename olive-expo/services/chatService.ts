@@ -486,6 +486,13 @@ export async function persistMessage(
   tokensIn = 0,
   tokensOut = 0
 ): Promise<Message> {
+  // Assert conversation_id presence to catch regressions
+  if (!conversationId || conversationId.trim() === "") {
+    throw new ChatServiceError(
+      "persistMessage: conversation_id is required but was not provided. This indicates a bug in conversation management."
+    );
+  }
+
   try {
     const { data, error } = await supabase
       .rpc("add_message", {

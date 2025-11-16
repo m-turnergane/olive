@@ -259,25 +259,17 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
           );
           console.log("✅ Assistant message persisted to database");
 
-          // Client-side safety net: trigger title generation after first full exchange
-          const { data: conv } = await supabase
-            .from("conversations")
-            .select("title")
-            .eq("id", currentConversationId)
-            .single();
-
+          // Client-side safety net: trigger title generation after first exchange (1 user + 1 assistant)
           const { data: msgCount } = await supabase
             .from("messages")
             .select("id")
             .eq("conversation_id", currentConversationId);
 
-          const needsTitle =
-            !conv?.title ||
-            conv.title === "Untitled conversation" ||
-            conv.title === "New chat";
-          const hasFullExchange = msgCount && msgCount.length >= 2;
-
-          if (needsTitle && hasFullExchange) {
+          if (msgCount && msgCount.length === 2) {
+            // Exactly 2 messages = first exchange complete
+            console.log(
+              "[ChatView] First exchange complete - generating title"
+            );
             triggerTitleGeneration(currentConversationId);
           }
         } catch (error) {

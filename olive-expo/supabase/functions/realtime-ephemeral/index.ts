@@ -17,20 +17,23 @@ const REALTIME_ENABLE = Deno.env.get("REALTIME_ENABLE") ?? "true";
 const REALTIME_SERVER = Deno.env.get("REALTIME_SERVER") ?? "openai";
 // @ts-ignore - Deno global
 const REALTIME_MODEL = Deno.env.get("REALTIME_MODEL") ?? "gpt-realtime-mini";
+// prettier-ignore
 // @ts-ignore - Deno global
-const REALTIME_VOICE_DEFAULT = Deno.env.get("REALTIME_VOICE_DEFAULT") ?? "sage";
+const REALTIME_VOICE_DEFAULT = Deno.env.get("REALTIME_VOICE_DEFAULT") ?? "ballad";
+// prettier-ignore
 // @ts-ignore - Deno global
-const REALTIME_VOICE_FEMALE = Deno.env.get("REALTIME_VOICE_FEMALE") ?? "sage";
+const REALTIME_VOICE_FEMALE = Deno.env.get("REALTIME_VOICE_FEMALE") ?? "ballad";
+// prettier-ignore
 // @ts-ignore - Deno global
 const REALTIME_VOICE_MALE = Deno.env.get("REALTIME_VOICE_MALE") ?? "alloy";
+// prettier-ignore
 // @ts-ignore - Deno global
-const REALTIME_TURN_DETECTION =
-  Deno.env.get("REALTIME_TURN_DETECTION") ?? "server_vad";
+const REALTIME_TURN_DETECTION = Deno.env.get("REALTIME_TURN_DETECTION") ?? "server_vad";
 // @ts-ignore - Deno global
 const AZURE_OPENAI_ENDPOINT = Deno.env.get("AZURE_OPENAI_ENDPOINT");
+// prettier-ignore
 // @ts-ignore - Deno global
-const AZURE_OPENAI_API_VERSION =
-  Deno.env.get("AZURE_OPENAI_API_VERSION") ?? "2025-04-01-preview";
+const AZURE_OPENAI_API_VERSION = Deno.env.get("AZURE_OPENAI_API_VERSION") ?? "2025-04-01-preview";
 // @ts-ignore - Deno global
 const LOG_LEVEL = Deno.env.get("LOG_LEVEL") ?? "info";
 
@@ -45,17 +48,19 @@ export const corsHeaders = {
 // Olive System Prompt (Voice-optimized)
 // ============================================================================
 
-const OLIVE_SYSTEM_PROMPT = `You are "Olive", an AI mental health companion. You are empathetic, confidential, culturally sensitive, and supportive. You are **not** a licensed clinician.
+const OLIVE_SYSTEM_PROMPT = `You are "Olive", an AI mental health companion. You are empathetic, warm, and conversational. You are **not** a licensed clinician.
 
-Core style: warm, validating, collaborative; brief, natural spoken language; avoid jargon. Offer evidence-based micro-skills (CBT reframing, grounding, paced breathing, behavioral activation, self-compassion) as suggestions, not commands.
+Style: Friendly, validating, natural spoken language. Keep responses brief (1-3 sentences) unless the user asks for more. Listen first before offering suggestions.
 
-Safety: If user mentions self-harm, harm to others, or acute crisis, respond with care; encourage immediate support and offer crisis/resource options.
+Turn-taking: Do not greet unless the user has spoken first. Speak once per turn and wait for the user. Keep responses concise and natural.
 
-Boundaries: Avoid medical, legal, or financial directives; redirect gently.
+Approach: Start by understanding what the user wants to talk about. Don't assume crisis or distress unless clearly expressed. When someone says they want to talk, be curious and welcoming rather than immediately concerned.
 
-Adaptation: Mirror the user's tone and reading level; respect cultural/identity cues.
+Skills: When appropriate, offer evidence-based techniques (CBT reframing, grounding, breathing exercises) as gentle suggestions, never commands.
 
-Keep answers concise in voice (1–3 sentences per turn unless user invites more).`;
+Safety: Only mention crisis resources (988, mental health professionals) if the user explicitly mentions self-harm, harm to others, suicidal thoughts, or asks for urgent help. Otherwise, focus on supportive conversation.
+
+Boundaries: Avoid medical, legal, or financial advice. Mirror the user's tone and energy.`;
 
 // ============================================================================
 // Logging Utility
@@ -158,14 +163,24 @@ Deno.serve(async (req) => {
       .single();
 
     const userPrefs = prefsData?.data || {};
-    const voiceGender = userPrefs.voice_gender ?? "female"; // default female
-    const selectedVoice =
-      voiceGender === "male" ? REALTIME_VOICE_MALE : REALTIME_VOICE_FEMALE;
 
-    log(
-      "debug",
-      `User voice preference: ${voiceGender}, selected voice: ${selectedVoice}`
-    );
+    // Support direct voice_id (e.g., "ash", "alloy") or fallback to voice_gender
+    let selectedVoice: string;
+    if (userPrefs.voice_id) {
+      selectedVoice = userPrefs.voice_id;
+      log(
+        "debug",
+        `Using explicit voice_id from preferences: ${selectedVoice}`
+      );
+    } else {
+      const voiceGender = userPrefs.voice_gender ?? "female"; // default female
+      selectedVoice =
+        voiceGender === "male" ? REALTIME_VOICE_MALE : REALTIME_VOICE_FEMALE;
+      log(
+        "debug",
+        `Using voice_gender (${voiceGender}), selected voice: ${selectedVoice}`
+      );
+    }
 
     // Construct session request body
     const sessionRequest = {
@@ -177,9 +192,12 @@ Deno.serve(async (req) => {
         type: REALTIME_TURN_DETECTION,
         threshold: 0.5,
         prefix_padding_ms: 300,
-        silence_duration_ms: 1000,
-        create_response: false, // We control response.create manually
+        silence_duration_ms: 1100,
+        create_response: true, // Server VAD creates response automatically
         interrupt_response: false, // Prevent self-interruption from echo
+      },
+      input_audio_transcription: {
+        model: "whisper-1", // Enable user speech transcription
       },
     };
 

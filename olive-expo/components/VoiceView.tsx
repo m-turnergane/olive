@@ -9,8 +9,12 @@ import {
   Alert,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
 } from "react-native";
-import { Audio } from "expo-av";
+import {
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from "expo-audio";
 import * as realtimeService from "../services/realtimeService";
 import * as chatService from "../services/chatService";
 import { supabase } from "../services/supabaseService";
@@ -34,6 +38,7 @@ interface TranscriptBubble {
 }
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
+type VoiceTurnState = "IDLE" | "LISTENING" | "THINKING" | "SPEAKING";
 
 // ============================================================================
 // VoiceView Component
@@ -47,37 +52,59 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("idle");
-  const [conversationId, setConversationId] = useState<string | null>(
-    selectedConversationId || null
-  );
+
+  // Voice Turn State Machine
+  const [voiceTurnState, setVoiceTurnState] = useState<VoiceTurnState>("IDLE");
 
   // Audio state for orb animation
-  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
-  const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [amplitude, setAmplitude] = useState(0);
 
   const realtimeConnection = useRef<realtimeService.RealtimeConnection | null>(
     null
   );
 
+  // Single conversation ID for entire voice session - set once on connect
+  const activeConversationId = useRef<string | null>(
+    selectedConversationId || null
+  );
+
   // Internal transcript buffers (not displayed, only for persistence)
-  const currentUserTranscript = useRef<string>("");
-  const currentAssistantTranscript = useRef<string>("");
+  const pendingTurn = useRef<{
+    userText: string;
+    assistantText: string;
+  }>({
+    userText: "",
+    assistantText: "",
+  });
 
-  // Turn management to prevent duplicate response.create
-  const currentTurnId = useRef<string>("");
-  const hasTriggeredResponse = useRef<boolean>(false);
+  // Orb animation hook - derive from state machine
+  const isUserSpeaking = voiceTurnState === "LISTENING";
+  const isModelSpeaking = voiceTurnState === "SPEAKING";
 
-  // Orb animation hook
   const {
     intensity,
     isUserSpeaking: animIsUserSpeaking,
     isModelSpeaking: animIsModelSpeaking,
   } = useOrbAnimation(
     amplitude,
-    isUserSpeaking || isAssistantSpeaking,
-    isAssistantSpeaking
+    isUserSpeaking || isModelSpeaking,
+    isModelSpeaking
   );
+
+  // ============================================================================
+  // Effects
+  // ============================================================================
+
+  // Sync selected conversation ID from props
+  useEffect(() => {
+    if (selectedConversationId) {
+      activeConversationId.current = selectedConversationId;
+      console.log(
+        "[VoiceView] Synced conversation ID from props:",
+        selectedConversationId
+      );
+    }
+  }, [selectedConversationId]);
 
   // ============================================================================
   // Permission Management
@@ -90,7 +117,25 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   const checkMicPermission = async () => {
     try {
       setIsCheckingPermission(true);
-      const { status } = await Audio.requestPermissionsAsync();
+
+      // Configure audio session for iOS (play-and-record with default-to-speaker)
+      // This reduces CoreAudio warnings on simulator
+      if (Platform.OS === "ios") {
+        try {
+          await setAudioModeAsync({
+            playsInSilentMode: true,
+            allowsRecording: true,
+          });
+        } catch (audioError) {
+          // Non-fatal - simulator may produce warnings but will work
+          console.log(
+            "[VoiceView] Audio mode setup (simulator warnings expected):",
+            audioError
+          );
+        }
+      }
+
+      const { status } = await requestRecordingPermissionsAsync();
       const granted = status === "granted";
       setMicPermission(granted);
 
@@ -110,20 +155,28 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   };
 
   // ============================================================================
-  // Conversation Management
+  // Conversation Management - ONE conversation per voice session
   // ============================================================================
 
-  const getOrCreateConversation = async (): Promise<string> => {
-    if (conversationId) {
-      return conversationId;
+  /**
+   * Initialize conversation for voice session - called ONCE at session start
+   * Reuses existing conversation if provided, otherwise creates new one
+   */
+  const initializeConversation = async (): Promise<string> => {
+    // If we already have an active conversation ID, reuse it
+    if (activeConversationId.current) {
+      return activeConversationId.current;
     }
 
-    // Create new conversation
+    // Create new conversation for this voice session
     const newConversation = await chatService.createConversation(
       "Voice conversation"
     );
-    setConversationId(newConversation.id);
 
+    // Store it for the entire session
+    activeConversationId.current = newConversation.id;
+
+    // Notify parent component
     if (onConversationCreated) {
       onConversationCreated(newConversation.id);
     }
@@ -146,48 +199,60 @@ const VoiceView: React.FC<VoiceViewProps> = ({
 
     try {
       setConnectionState("connecting");
+      setVoiceTurnState("IDLE");
 
-      // Ensure we have a conversation ID
-      const convId = await getOrCreateConversation();
+      // Initialize conversation ONCE for this voice session
+      await initializeConversation();
+      console.log(
+        "[VoiceView] Using conversation ID:",
+        activeConversationId.current
+      );
 
-      // Start a new turn
-      currentTurnId.current = Date.now().toString();
-      hasTriggeredResponse.current = false;
-      currentUserTranscript.current = "";
-      currentAssistantTranscript.current = "";
+      // Reset pending turn
+      pendingTurn.current = {
+        userText: "",
+        assistantText: "",
+      };
 
       // Connect to Realtime API
       const connection = await realtimeService.connectRealtime({
         onTranscript: handleUserTranscript,
         onAssistantText: handleAssistantText,
-        onUserTurnEnd: handleUserTurnEnd,
+        onUserSpeechStart: () => {
+          console.log("[VoiceView] User started speaking");
+          setVoiceTurnState("LISTENING");
+          setAmplitude(0.3); // Lower amplitude for user
+        },
+        onUserSpeechStop: () => {
+          console.log("[VoiceView] User stopped speaking");
+          setVoiceTurnState("THINKING");
+          setAmplitude(0);
+        },
         onResponseComplete: handleResponseComplete,
         onSpeakingStart: () => {
           console.log("[VoiceView] Assistant started speaking");
-          setIsAssistantSpeaking(true);
+          setVoiceTurnState("SPEAKING");
           setAmplitude(0.7); // Higher amplitude for assistant
         },
         onSpeakingEnd: () => {
           console.log("[VoiceView] Assistant stopped speaking");
-          setIsAssistantSpeaking(false);
-          setAmplitude(0);
+          // Don't change state here - wait for response.done
         },
         onError: (error) => {
           console.error("[VoiceView] Realtime error:", error);
           Alert.alert("Connection Error", error.message);
           setConnectionState("error");
+          setVoiceTurnState("IDLE");
         },
         onConnect: () => {
           console.log("[VoiceView] Connected to Realtime API");
           setConnectionState("connected");
-          setIsUserSpeaking(true);
-          setAmplitude(0.3); // Lower amplitude for user
+          setVoiceTurnState("LISTENING");
         },
         onDisconnect: () => {
           console.log("[VoiceView] Disconnected from Realtime API");
           setConnectionState("idle");
-          setIsUserSpeaking(false);
-          setIsAssistantSpeaking(false);
+          setVoiceTurnState("IDLE");
           setAmplitude(0);
         },
       });
@@ -200,6 +265,7 @@ const VoiceView: React.FC<VoiceViewProps> = ({
         "Could not connect to voice service. Please try again."
       );
       setConnectionState("error");
+      setVoiceTurnState("IDLE");
     }
   };
 
@@ -208,6 +274,10 @@ const VoiceView: React.FC<VoiceViewProps> = ({
       await realtimeConnection.current.disconnect();
       realtimeConnection.current = null;
     }
+
+    // Note: We keep activeConversationId intact so if user reconnects
+    // in the same session, they continue the same conversation.
+    // If they want a new conversation, they should select "New Chat" first.
   };
 
   // ============================================================================
@@ -218,8 +288,8 @@ const VoiceView: React.FC<VoiceViewProps> = ({
     if (!text) return;
 
     if (isFinal) {
-      // Final transcript - store in buffer
-      currentUserTranscript.current = text;
+      // Final transcript - store in pending turn
+      pendingTurn.current.userText = text;
       console.log("[VoiceView] User transcript (final):", text);
     } else {
       // Partial - just log for debugging, don't display
@@ -233,16 +303,16 @@ const VoiceView: React.FC<VoiceViewProps> = ({
     if (!text) return;
 
     if (isFinal) {
-      // Final response - store in buffer
-      currentAssistantTranscript.current = text;
+      // Final response - store in pending turn
+      pendingTurn.current.assistantText = text;
       console.log("[VoiceView] Assistant response (final):", text);
     } else {
       // Streaming - accumulate but don't display
-      currentAssistantTranscript.current += text;
+      pendingTurn.current.assistantText += text;
       if (__DEV__) {
         console.debug(
           "[VoiceView] Assistant response (partial):",
-          currentAssistantTranscript.current
+          pendingTurn.current.assistantText
         );
       }
     }
@@ -252,61 +322,65 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   // Turn Management
   // ============================================================================
 
-  const handleUserTurnEnd = () => {
-    console.log("[VoiceView] User turn ended (VAD detected)");
-
-    // Trigger response.create exactly once per turn
-    if (!hasTriggeredResponse.current && realtimeConnection.current) {
-      hasTriggeredResponse.current = true;
-      realtimeConnection.current.triggerResponse();
-      console.log(
-        "[VoiceView] Triggered response.create for turn:",
-        currentTurnId.current
-      );
-    }
-  };
-
   const handleResponseComplete = async () => {
     console.log("[VoiceView] Response completed - persisting transcripts");
 
     try {
-      const convId = await getOrCreateConversation();
+      // Use the active conversation ID for this session
+      const convId = activeConversationId.current;
 
-      // Persist user transcript
-      if (currentUserTranscript.current.trim()) {
+      if (!convId) {
+        console.error(
+          "[VoiceView] No active conversation ID - this should not happen"
+        );
+        return;
+      }
+
+      // Persist user transcript if present
+      if (pendingTurn.current.userText.trim()) {
         await chatService.persistMessage(
           convId,
           "user",
-          currentUserTranscript.current
+          pendingTurn.current.userText
         );
-        console.log("[VoiceView] User message persisted");
+        console.log(
+          "[VoiceView] User message persisted to conversation:",
+          convId
+        );
       }
 
-      // Persist assistant response
-      if (currentAssistantTranscript.current.trim()) {
+      // Persist assistant response if present
+      if (pendingTurn.current.assistantText.trim()) {
         await chatService.persistMessage(
           convId,
           "assistant",
-          currentAssistantTranscript.current
+          pendingTurn.current.assistantText
         );
-        console.log("[VoiceView] Assistant message persisted");
+        console.log(
+          "[VoiceView] Assistant message persisted to conversation:",
+          convId
+        );
       }
 
-      // Trigger title generation after first complete exchange
+      // Trigger title generation after first complete exchange (1 user + 1 assistant)
       const { data: messages } = await supabase
         .from("messages")
         .select("id")
         .eq("conversation_id", convId);
 
-      if (messages && messages.length <= 2) {
+      if (messages && messages.length === 2) {
+        // Exactly 2 messages = first exchange complete
+        console.log("[VoiceView] First exchange complete - generating title");
         triggerTitleGeneration(convId);
       }
 
-      // Reset for next turn
-      currentUserTranscript.current = "";
-      currentAssistantTranscript.current = "";
-      currentTurnId.current = Date.now().toString();
-      hasTriggeredResponse.current = false;
+      // Reset for next turn and transition to LISTENING state
+      pendingTurn.current = {
+        userText: "",
+        assistantText: "",
+      };
+      setVoiceTurnState("LISTENING");
+      setAmplitude(0);
     } catch (error) {
       console.error("[VoiceView] Failed to persist messages:", error);
     }
@@ -322,12 +396,19 @@ const VoiceView: React.FC<VoiceViewProps> = ({
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session?.access_token) return;
+      if (!session?.access_token) {
+        console.log("[VoiceView] No session token - skipping title generation");
+        return;
+      }
 
       const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
       const FN_BASE = `${SUPABASE_URL}/functions/v1`;
 
-      await fetch(`${FN_BASE}/generate-title`, {
+      console.log(
+        `[VoiceView] Calling generate-title for conversation: ${convId}`
+      );
+
+      const response = await fetch(`${FN_BASE}/generate-title`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -336,7 +417,15 @@ const VoiceView: React.FC<VoiceViewProps> = ({
         body: JSON.stringify({ conversation_id: convId }),
       });
 
-      console.log("[VoiceView] Title generation triggered");
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`[VoiceView] ✅ Title generated: "${result.title}"`);
+      } else {
+        const errorText = await response.text();
+        console.error(
+          `[VoiceView] Title generation failed: ${response.status} - ${errorText}`
+        );
+      }
     } catch (error) {
       console.error("[VoiceView] Failed to generate title:", error);
     }
@@ -414,7 +503,10 @@ const VoiceView: React.FC<VoiceViewProps> = ({
           )}
           {connectionState === "connected" && (
             <Text style={[styles.stateText, styles.connectedText]}>
-              {isAssistantSpeaking ? "Olive is speaking" : "Listening..."}
+              {voiceTurnState === "LISTENING" && "Listening..."}
+              {voiceTurnState === "THINKING" && "Processing..."}
+              {voiceTurnState === "SPEAKING" && "Olive is speaking"}
+              {voiceTurnState === "IDLE" && "Connected"}
             </Text>
           )}
           {connectionState === "idle" && (

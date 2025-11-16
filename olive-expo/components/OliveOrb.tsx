@@ -75,14 +75,26 @@ const OliveOrbSkia: React.FC<OliveOrbProps> = ({
   const smoothIntensity = useRef(0);
 
   useEffect(() => {
-    smoothIntensity.current = smoothIntensity.current * 0.7 + intensity * 0.3;
+    // Guard against NaN and infinity
+    const clampedIntensity = Number.isFinite(intensity) 
+      ? Math.max(0, Math.min(1, intensity)) 
+      : 0;
+    smoothIntensity.current = smoothIntensity.current * 0.7 + clampedIntensity * 0.3;
   }, [intensity]);
+
+  // Bail out early if size is invalid (prevents CoreGraphics NaN warnings)
+  if (size <= 0 || !Number.isFinite(size)) {
+    return null;
+  }
 
   const activeColor = isModelSpeaking ? COLOR_BLUE : COLOR_PRIMARY;
   const centerX = size / 2;
   const centerY = size / 2;
   const baseRadius = size * 0.25;
-  const intensityScale = 1 + intensity * 0.5;
+  const clampedIntensity = Number.isFinite(intensity) 
+    ? Math.max(0, Math.min(1, intensity)) 
+    : 0;
+  const intensityScale = 1 + clampedIntensity * 0.5;
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
@@ -232,6 +244,16 @@ const OliveOrbAnimated: React.FC<OliveOrbProps> = ({
   isModelSpeaking = false,
   size = 300,
 }) => {
+  // Bail out early if size is invalid (prevents CoreGraphics NaN warnings)
+  if (size <= 0 || !Number.isFinite(size)) {
+    return null;
+  }
+
+  // Guard intensity against NaN/infinity
+  const clampedIntensity = Number.isFinite(intensity) 
+    ? Math.max(0, Math.min(1, intensity)) 
+    : 0;
+
   // Animation values
   const breatheAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -304,7 +326,7 @@ const OliveOrbAnimated: React.FC<OliveOrbProps> = ({
   });
 
   const baseSize = size * 0.5;
-  const intensityScale = 1 + intensity * 0.3;
+  const intensityScale = 1 + clampedIntensity * 0.3;
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
