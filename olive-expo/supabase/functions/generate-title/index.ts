@@ -12,15 +12,18 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 const OPENAI_CHAT_MODEL = Deno.env.get("OPENAI_CHAT_MODEL") ?? "gpt-5-nano";
 
 // @ts-ignore
-const OPENAI_TITLE_MODEL = Deno.env.get("OPENAI_TITLE_MODEL") ?? OPENAI_CHAT_MODEL;
+const OPENAI_TITLE_MODEL =
+  Deno.env.get("OPENAI_TITLE_MODEL") ?? OPENAI_CHAT_MODEL;
 
 // @ts-ignore - Auto-detect API mode based on model name
-const OPENAI_TITLE_API_MODE = Deno.env.get("OPENAI_TITLE_API_MODE") ?? 
+const OPENAI_TITLE_API_MODE =
+  Deno.env.get("OPENAI_TITLE_API_MODE") ??
   (OPENAI_TITLE_MODEL.includes("gpt-5") ? "responses" : "chat");
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 /**
@@ -31,24 +34,24 @@ export const corsHeaders = {
  */
 function normalizeTitle(rawTitle: string): string {
   if (!rawTitle) return "";
-  
+
   // Strip quotes and backticks
   let title = rawTitle.replace(/^["'`]+|["'`]+$/g, "").trim();
-  
+
   // Remove trailing punctuation except question marks
   title = title.replace(/[.,;:!]+$/, "");
-  
+
   // Sentence case: lowercase everything, then capitalize first letter
   title = title.toLowerCase();
   if (title.length > 0) {
     title = title.charAt(0).toUpperCase() + title.slice(1);
   }
-  
+
   // Trim to max length
   if (title.length > 60) {
     title = title.substring(0, 57) + "...";
   }
-  
+
   return title;
 }
 
@@ -130,10 +133,13 @@ async function generateTitleWithResponses(
   }
 
   const data = await response.json();
-  
+
   // Extract text from output_text array
   const outputText = data.output_text || [];
-  const title = outputText.map((item: any) => item.text || "").join("").trim();
+  const title = outputText
+    .map((item: any) => item.text || "")
+    .join("")
+    .trim();
   const usage = data.usage;
 
   return { title, usage };
@@ -192,20 +198,29 @@ Deno.serve(async (req) => {
           error: "Failed to fetch messages",
           details: messagesErr.message,
         }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
     // Defensive: require at least 2 messages (1 user + 1 assistant)
     if (!messages || messages.length < 2) {
-      console.log(`Not enough messages (${messages?.length ?? 0}) for title generation`);
+      console.log(
+        `Not enough messages (${messages?.length ?? 0}) for title generation`
+      );
       return new Response(
         JSON.stringify({
           ok: false,
           error: "Not enough messages",
-          details: "Title generation requires at least 1 user and 1 assistant message",
+          details:
+            "Title generation requires at least 1 user and 1 assistant message",
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
@@ -224,9 +239,15 @@ Guidelines:
 
 Return ONLY the title, nothing else.`;
 
-    const userPrompt = `Generate a title for this conversation:\n\n${JSON.stringify(messages, null, 2)}`;
+    const userPrompt = `Generate a title for this conversation:\n\n${JSON.stringify(
+      messages,
+      null,
+      2
+    )}`;
 
-    console.log(`[generate-title] Model: ${OPENAI_TITLE_MODEL}, Mode: ${OPENAI_TITLE_API_MODE}`);
+    console.log(
+      `[generate-title] Model: ${OPENAI_TITLE_MODEL}, Mode: ${OPENAI_TITLE_API_MODE}`
+    );
 
     // Call OpenAI based on mode
     let rawTitle = "";
@@ -234,11 +255,19 @@ Return ONLY the title, nothing else.`;
 
     try {
       if (OPENAI_TITLE_API_MODE === "responses") {
-        const result = await generateTitleWithResponses(OPENAI_TITLE_MODEL, systemPrompt, userPrompt);
+        const result = await generateTitleWithResponses(
+          OPENAI_TITLE_MODEL,
+          systemPrompt,
+          userPrompt
+        );
         rawTitle = result.title;
         usage = result.usage;
       } else {
-        const result = await generateTitleWithChat(OPENAI_TITLE_MODEL, systemPrompt, userPrompt);
+        const result = await generateTitleWithChat(
+          OPENAI_TITLE_MODEL,
+          systemPrompt,
+          userPrompt
+        );
         rawTitle = result.title;
         usage = result.usage;
       }
@@ -250,7 +279,10 @@ Return ONLY the title, nothing else.`;
           error: "OpenAI API error",
           details: openaiError.message,
         }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
@@ -282,11 +314,16 @@ Return ONLY the title, nothing else.`;
           error: "Failed to update title",
           details: updateErr.message,
         }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
       );
     }
 
-    console.log(`[generate-title] ✅ Title set for conversation ${conversation_id}: "${title}"`);
+    console.log(
+      `[generate-title] ✅ Title set for conversation ${conversation_id}: "${title}"`
+    );
 
     return new Response(
       JSON.stringify({

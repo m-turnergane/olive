@@ -396,7 +396,9 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   const triggerTitleGeneration = async (convId: string) => {
     // One-shot guard: only attempt once per conversation
     if (hasTitleGenerationAttempted.current.has(convId)) {
-      console.log(`[VoiceView] Title generation already attempted for ${convId}`);
+      console.log(
+        `[VoiceView] Title generation already attempted for ${convId}`
+      );
       return;
     }
 
