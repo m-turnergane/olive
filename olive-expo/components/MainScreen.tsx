@@ -72,7 +72,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ user, onLogout }) => {
       case "settings":
         return (
           <Animated.View style={[styles.pageContainer, { opacity: fadeAnim }]}>
-            <SettingsPage />
+            <SettingsPage user={user} />
           </Animated.View>
         );
       case "main":

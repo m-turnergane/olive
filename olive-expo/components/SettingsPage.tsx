@@ -11,6 +11,8 @@ import {
   ScrollView,
 } from 'react-native';
 import * as supabaseService from '../services/supabaseService';
+import PreferencesView from './PreferencesView';
+import { User } from '../types';
 
 interface ToggleSwitchProps {
   label: string;
@@ -34,12 +36,17 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ label, disabled = false }) 
   );
 };
 
-const SettingsPage: React.FC = () => {
+interface SettingsPageProps {
+  user?: User;
+}
+
+const SettingsPage: React.FC<SettingsPageProps> = ({ user }) => {
   const [hasPassword, setHasPassword] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isPasswordSectionOpen, setIsPasswordSectionOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'general' | 'preferences'>('preferences');
 
   useEffect(() => {
     checkPasswordAuth();
@@ -116,16 +123,57 @@ const SettingsPage: React.FC = () => {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.sectionTitle}>General</Text>
-        <ToggleSwitch label="Enable Notifications" disabled />
-        <ToggleSwitch label="Dark Mode" disabled />
+    <View style={styles.container}>
+      {/* Tab Navigation */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[
+            styles.tab,
+            activeTab === 'preferences' && styles.tabActive,
+          ]}
+          onPress={() => setActiveTab('preferences')}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'preferences' && styles.tabTextActive,
+            ]}
+          >
+            Preferences
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.tab,
+            activeTab === 'general' && styles.tabActive,
+          ]}
+          onPress={() => setActiveTab('general')}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'general' && styles.tabTextActive,
+            ]}
+          >
+            Account & Security
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-        <Text style={[styles.sectionTitle, styles.sectionMargin]}>Account</Text>
-        <ToggleSwitch label="Data Sync" disabled />
+      {/* Content */}
+      {activeTab === 'preferences' && user ? (
+        <PreferencesView user={user} />
+      ) : (
+        <ScrollView style={styles.scrollContent}>
+          <View style={styles.content}>
+            <Text style={styles.sectionTitle}>General</Text>
+            <ToggleSwitch label="Enable Notifications" disabled />
+            <ToggleSwitch label="Dark Mode" disabled />
 
-        <Text style={[styles.sectionTitle, styles.sectionMargin]}>Security</Text>
+            <Text style={[styles.sectionTitle, styles.sectionMargin]}>Account</Text>
+            <ToggleSwitch label="Data Sync" disabled />
+
+            <Text style={[styles.sectionTitle, styles.sectionMargin]}>Security</Text>
         
         {hasPassword === null ? (
           <View style={styles.passwordContainer}>
@@ -201,13 +249,44 @@ const SettingsPage: React.FC = () => {
             )}
           </View>
         )}
-      </View>
-    </ScrollView>
+          </View>
+        </ScrollView>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    alignItems: 'center',
+  },
+  tabActive: {
+    backgroundColor: '#5E8C61',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(27, 58, 47, 0.7)',
+  },
+  tabTextActive: {
+    color: '#FFFFFF',
+  },
+  scrollContent: {
     flex: 1,
     paddingHorizontal: 16,
   },
