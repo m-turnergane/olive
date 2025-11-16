@@ -24,6 +24,12 @@ interface UserPreferencesData {
   pronouns?: string;
   tone?: "casual" | "professional" | "supportive";
   voice_gender?: "male" | "female";
+  location?: {
+    city?: string;
+    lat?: number;
+    lng?: number;
+  };
+  search_radius_km?: number;
 }
 
 const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
@@ -32,9 +38,14 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
     pronouns: "",
     tone: "supportive",
     voice_gender: "female",
+    location: { city: "" },
+    search_radius_km: 35,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [previousVoiceGender, setPreviousVoiceGender] = useState<
+    "male" | "female"
+  >("female");
 
   // Load preferences on mount
   useEffect(() => {
@@ -56,12 +67,16 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
       }
 
       if (data?.data) {
-        setPreferences({
+        const prefs = {
           nickname: data.data.nickname || "",
           pronouns: data.data.pronouns || "",
           tone: data.data.tone || "supportive",
           voice_gender: data.data.voice_gender || "female",
-        });
+          location: data.data.location || { city: "" },
+          search_radius_km: data.data.search_radius_km || 35,
+        };
+        setPreferences(prefs);
+        setPreviousVoiceGender(prefs.voice_gender);
       }
     } catch (error) {
       console.error("Failed to load preferences:", error);
@@ -86,7 +101,16 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
         return;
       }
 
-      Alert.alert("Success", "Your preferences have been saved!");
+      // Check if voice changed and show specific message
+      if (previousVoiceGender !== preferences.voice_gender) {
+        Alert.alert(
+          "Voice Updated",
+          "New voice sessions will use this voice."
+        );
+        setPreviousVoiceGender(preferences.voice_gender);
+      } else {
+        Alert.alert("Success", "Your preferences have been saved!");
+      }
     } catch (error) {
       console.error("Failed to save preferences:", error);
       Alert.alert("Error", "Something went wrong. Please try again.");
@@ -228,12 +252,15 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
               styles.toneButton,
               preferences.voice_gender === "female" && styles.toneButtonActive,
             ]}
-            onPress={() => setPreferences({ ...preferences, voice_gender: "female" })}
+            onPress={() =>
+              setPreferences({ ...preferences, voice_gender: "female" })
+            }
           >
             <Text
               style={[
                 styles.toneButtonText,
-                preferences.voice_gender === "female" && styles.toneButtonTextActive,
+                preferences.voice_gender === "female" &&
+                  styles.toneButtonTextActive,
               ]}
             >
               Female Voice
@@ -246,7 +273,9 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
               styles.toneButton,
               preferences.voice_gender === "male" && styles.toneButtonActive,
             ]}
-            onPress={() => setPreferences({ ...preferences, voice_gender: "male" })}
+            onPress={() =>
+              setPreferences({ ...preferences, voice_gender: "male" })
+            }
           >
             <Text
               style={[
@@ -258,6 +287,62 @@ const PreferencesView: React.FC<PreferencesViewProps> = ({ user }) => {
             </Text>
             <Text style={styles.toneDescription}>Alloy (neutral & balanced)</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Location */}
+      <View style={styles.section}>
+        <Text style={styles.label}>Location</Text>
+        <Text style={styles.helper}>
+          Used to find local care providers (e.g., "Mississauga, ON")
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={preferences.location?.city || ""}
+          onChangeText={(text) =>
+            setPreferences({
+              ...preferences,
+              location: { city: text },
+            })
+          }
+          placeholder="City, Province/State"
+          placeholderTextColor="rgba(27, 58, 47, 0.4)"
+          maxLength={100}
+        />
+      </View>
+
+      {/* Search Radius */}
+      <View style={styles.section}>
+        <Text style={styles.label}>
+          Search Radius: {preferences.search_radius_km || 35} km
+        </Text>
+        <Text style={styles.helper}>
+          How far to search for care providers
+        </Text>
+        <View style={styles.radiusOptions}>
+          {[10, 25, 35, 50, 75, 100].map((radius) => (
+            <TouchableOpacity
+              key={radius}
+              style={[
+                styles.radiusButton,
+                preferences.search_radius_km === radius &&
+                  styles.radiusButtonActive,
+              ]}
+              onPress={() =>
+                setPreferences({ ...preferences, search_radius_km: radius })
+              }
+            >
+              <Text
+                style={[
+                  styles.radiusButtonText,
+                  preferences.search_radius_km === radius &&
+                    styles.radiusButtonTextActive,
+                ]}
+              >
+                {radius}km
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
@@ -366,6 +451,33 @@ const styles = StyleSheet.create({
   toneDescription: {
     fontSize: 14,
     color: "rgba(27, 58, 47, 0.6)",
+  },
+  radiusOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  radiusButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
+    borderWidth: 2,
+    borderColor: "rgba(94, 140, 97, 0.3)",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    minWidth: 70,
+    alignItems: "center",
+  },
+  radiusButtonActive: {
+    backgroundColor: "#5E8C61",
+    borderColor: "#5E8C61",
+  },
+  radiusButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1B3A2F",
+  },
+  radiusButtonTextActive: {
+    color: "#FFFFFF",
   },
   infoBox: {
     backgroundColor: "#E8F5E9",
