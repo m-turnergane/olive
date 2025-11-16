@@ -77,6 +77,9 @@ const VoiceView: React.FC<VoiceViewProps> = ({
     assistantText: "",
   });
 
+  // Track which conversations have had title generation attempted (one-shot guard)
+  const hasTitleGenerationAttempted = useRef<Set<string>>(new Set());
+
   // Orb animation hook - derive from state machine
   const isUserSpeaking = voiceTurnState === "LISTENING";
   const isModelSpeaking = voiceTurnState === "SPEAKING";
@@ -391,6 +394,14 @@ const VoiceView: React.FC<VoiceViewProps> = ({
   // ============================================================================
 
   const triggerTitleGeneration = async (convId: string) => {
+    // One-shot guard: only attempt once per conversation
+    if (hasTitleGenerationAttempted.current.has(convId)) {
+      console.log(`[VoiceView] Title generation already attempted for ${convId}`);
+      return;
+    }
+
+    hasTitleGenerationAttempted.current.add(convId);
+
     try {
       const {
         data: { session },
