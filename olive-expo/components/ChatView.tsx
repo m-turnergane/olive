@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Animated,
+  Alert,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { User } from "../types";
@@ -100,9 +101,22 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
       if (response.ok) {
         const result = await response.json();
         console.log("✅ Title generated:", result.title);
+      } else {
+        const errorText = await response.text();
+        console.error(
+          `[ChatView] Title generation failed (${response.status}): ${errorText}`
+        );
+        Alert.alert(
+          "Title update failed",
+          "We couldn't automatically rename this chat. You can try again later."
+        );
       }
     } catch (error) {
       console.error("Failed to trigger title generation:", error);
+      Alert.alert(
+        "Title update failed",
+        "We couldn't automatically rename this chat. You can try again later."
+      );
     }
   };
 
@@ -260,15 +274,23 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
           console.log("✅ Assistant message persisted to database");
 
           // Client-side safety net: trigger title generation after first exchange (1 user + 1 assistant)
-          const { data: msgCount } = await supabase
+          const { data: roleSamples } = await supabase
             .from("messages")
-            .select("id")
-            .eq("conversation_id", currentConversationId);
+            .select("role")
+            .eq("conversation_id", currentConversationId)
+            .order("created_at", { ascending: true })
+            .limit(10);
 
-          if (msgCount && msgCount.length === 2) {
-            // Exactly 2 messages = first exchange complete
+          const hasUserMessage = roleSamples?.some(
+            (msg) => msg.role === "user"
+          );
+          const hasAssistantMessage = roleSamples?.some(
+            (msg) => msg.role === "assistant"
+          );
+
+          if (hasUserMessage && hasAssistantMessage) {
             console.log(
-              "[ChatView] First exchange complete - generating title"
+              "[ChatView] First exchange detected - triggering title generation"
             );
             triggerTitleGeneration(currentConversationId);
           }

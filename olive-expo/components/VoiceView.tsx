@@ -366,14 +366,20 @@ const VoiceView: React.FC<VoiceViewProps> = ({
       }
 
       // Trigger title generation after first complete exchange (1 user + 1 assistant)
-      const { data: messages } = await supabase
+      const { data: roleSamples } = await supabase
         .from("messages")
-        .select("id")
-        .eq("conversation_id", convId);
+        .select("role")
+        .eq("conversation_id", convId)
+        .order("created_at", { ascending: true })
+        .limit(10);
 
-      if (messages && messages.length === 2) {
-        // Exactly 2 messages = first exchange complete
-        console.log("[VoiceView] First exchange complete - generating title");
+      const hasUserMessage = roleSamples?.some((msg) => msg.role === "user");
+      const hasAssistantMessage = roleSamples?.some(
+        (msg) => msg.role === "assistant"
+      );
+
+      if (hasUserMessage && hasAssistantMessage) {
+        console.log("[VoiceView] First exchange detected - generating title");
         triggerTitleGeneration(convId);
       }
 
@@ -438,9 +444,17 @@ const VoiceView: React.FC<VoiceViewProps> = ({
         console.error(
           `[VoiceView] Title generation failed: ${response.status} - ${errorText}`
         );
+        Alert.alert(
+          "Title update failed",
+          "We couldn't automatically rename this voice session. You can try again later."
+        );
       }
     } catch (error) {
       console.error("[VoiceView] Failed to generate title:", error);
+      Alert.alert(
+        "Title update failed",
+        "We couldn't automatically rename this voice session. You can try again later."
+      );
     }
   };
 

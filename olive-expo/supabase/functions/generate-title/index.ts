@@ -1,24 +1,32 @@
 // supabase/functions/generate-title/index.ts
 // Generates a concise, descriptive title for a conversation based on its messages
-// Supports both OpenAI Chat Completions and Responses APIs
+// Supports both OpenAI Chat Completions and Responses APIs with anti-generic safeguards
 
 // @ts-ignore - Supabase client from ESM
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
-// @ts-ignore
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
+declare const Deno: any;
 
 // @ts-ignore
-const OPENAI_CHAT_MODEL = Deno.env.get("OPENAI_CHAT_MODEL") ?? "gpt-5-nano";
+const OPENAI_API_KEY = (() => {
+  const key = Deno.env.get("OPENAI_API_KEY");
+  if (!key) {
+    console.error(
+      "[generate-title] Missing OPENAI_API_KEY environment variable"
+    );
+    throw new Error("OPENAI_API_KEY is not configured");
+  }
+  return key;
+})();
 
-// @ts-ignore
-const OPENAI_TITLE_MODEL =
-  Deno.env.get("OPENAI_TITLE_MODEL") ?? OPENAI_CHAT_MODEL;
+// Model configuration with fallback support
+const OPENAI_TITLE_MODEL = Deno.env.get("OPENAI_TITLE_MODEL") ?? "gpt-5-nano";
 
-// @ts-ignore - Auto-detect API mode based on model name
 const OPENAI_TITLE_API_MODE =
   Deno.env.get("OPENAI_TITLE_API_MODE") ??
   (OPENAI_TITLE_MODEL.includes("gpt-5") ? "responses" : "chat");
+
+const OPENAI_TITLE_FALLBACK_MODEL = Deno.env.get("OPENAI_TITLE_FALLBACK_MODEL"); // e.g., "gpt-4o-mini"
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,12 +35,13 @@ export const corsHeaders = {
 };
 
 /**
- * Normalize title text:
- * - Strip quotes, backticks, and extra punctuation
+ * Clean and validate title:
+ * - Strip quotes, backticks, and trailing punctuation
  * - Sentence case (capitalize first letter only)
+ * - Reject generic/empty titles
  * - Trim to max 60 characters
  */
-function normalizeTitle(rawTitle: string): string {
+function cleanTitle(rawTitle: string): string {
   if (!rawTitle) return "";
 
   // Strip quotes and backticks
@@ -47,6 +56,24 @@ function normalizeTitle(rawTitle: string): string {
     title = title.charAt(0).toUpperCase() + title.slice(1);
   }
 
+  // Reject generic titles
+  const genericTitles = [
+    "new conversation",
+    "new chat",
+    "untitled conversation",
+    "general",
+    "random chat",
+    "conversation",
+    "chat",
+  ];
+  if (
+    !title ||
+    title.length < 3 ||
+    genericTitles.includes(title.toLowerCase())
+  ) {
+    return "";
+  }
+
   // Trim to max length
   if (title.length > 60) {
     title = title.substring(0, 57) + "...";
@@ -56,13 +83,127 @@ function normalizeTitle(rawTitle: string): string {
 }
 
 /**
- * Call OpenAI Chat Completions API
+ * Build a concise context snippet from messages
+ * Prioritizes user messages and first assistant response
+ */
+function buildContextSnippet(
+  messages: Array<{ role: string; content: string }>
+): string {
+  const userLines = messages
+    .filter((m) => m.role === "user")
+    .map((m) => m.content);
+  const assistantFirst =
+    messages.find((m) => m.role === "assistant")?.content || "";
+
+  const userContext = userLines.join("\n").slice(0, 800);
+  const assistantContext = assistantFirst.slice(0, 300);
+
+  return `${userContext}\n${assistantContext}`.trim();
+}
+
+/**
+ * Call OpenAI Responses API (for GPT-5 models)
+ */
+async function generateTitleWithResponses(
+  model: string,
+  snippet: string,
+  isRetry: boolean = false
+): Promise<{ title: string; usage?: any }> {
+  const systemPrompt = `You title conversations for a mental health companion.
+
+Rules:
+- 3–6 words, sentence case
+- Be specific to the user's topic; NO generic titles
+- No quotes or trailing punctuation
+- Examples: "Coping with loss of pet", "Anxiety before job interview", "Sleep troubles and stress"`;
+
+  const userPrompt = isRetry
+    ? `Title this specific topic in 3–6 words (no generic titles like "New conversation").
+
+Context:
+${snippet}
+
+Return ONLY the title.`
+    : `Write a title for this conversation context:
+
+${snippet}
+
+Return ONLY the title, nothing else.`;
+
+  const input = [
+    {
+      role: "system",
+      content: [{ type: "input_text", text: systemPrompt }],
+    },
+    {
+      role: "user",
+      content: [{ type: "input_text", text: userPrompt }],
+    },
+  ];
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      input,
+      max_output_tokens: 32,
+      reasoning: { effort: "minimal" },
+      text: {
+        verbosity: "low",
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(
+      `[generate-title] Responses API error (${response.status}) raw response: ${errorBody}`
+    );
+    throw new Error(`Responses API error (${response.status}): ${errorBody}`);
+  }
+
+  const data = await response.json();
+
+  // Extract text from output_text (convenience field in Responses API)
+  const rawText = (data?.output_text ?? "").trim();
+  const usage = data.usage;
+
+  return { title: rawText, usage };
+}
+
+/**
+ * Call OpenAI Chat Completions API (for GPT-4 and other models)
  */
 async function generateTitleWithChat(
   model: string,
-  systemPrompt: string,
-  userPrompt: string
+  snippet: string,
+  isRetry: boolean = false
 ): Promise<{ title: string; usage?: any }> {
+  const systemPrompt = `You title conversations for a mental health companion.
+
+Rules:
+- 3–6 words, sentence case
+- Be specific to the user's topic; NO generic titles
+- No quotes or trailing punctuation
+- Examples: "Coping with loss of pet", "Anxiety before job interview", "Sleep troubles and stress"`;
+
+  const userPrompt = isRetry
+    ? `Title this specific topic in 3–6 words (no generic titles like "New conversation").
+
+Context:
+${snippet}
+
+Return ONLY the title.`
+    : `Write a title for this conversation context:
+
+${snippet}
+
+Return ONLY the title, nothing else.`;
+
   const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
@@ -77,69 +218,21 @@ async function generateTitleWithChat(
     body: JSON.stringify({
       model,
       messages,
-      max_tokens: 20,
-      temperature: 0.7,
+      max_tokens: 32,
+      temperature: 0.2,
     }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
+    console.error(
+      `[generate-title] Chat API error (${response.status}) raw response: ${errorBody}`
+    );
     throw new Error(`Chat API error (${response.status}): ${errorBody}`);
   }
 
   const data = await response.json();
   const title = data.choices?.[0]?.message?.content?.trim() ?? "";
-  const usage = data.usage;
-
-  return { title, usage };
-}
-
-/**
- * Call OpenAI Responses API
- */
-async function generateTitleWithResponses(
-  model: string,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<{ title: string; usage?: any }> {
-  const input = [
-    {
-      role: "system",
-      content: [{ type: "text", text: systemPrompt }],
-    },
-    {
-      role: "user",
-      content: [{ type: "text", text: userPrompt }],
-    },
-  ];
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      input,
-      max_output_tokens: 20,
-      temperature: 0.7,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Responses API error (${response.status}): ${errorBody}`);
-  }
-
-  const data = await response.json();
-
-  // Extract text from output_text array
-  const outputText = data.output_text || [];
-  const title = outputText
-    .map((item: any) => item.text || "")
-    .join("")
-    .trim();
   const usage = data.usage;
 
   return { title, usage };
@@ -182,13 +275,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch first few messages from conversation
+    // Fetch first 8 messages from conversation (more context for better titles)
     const { data: messages, error: messagesErr } = await supabase
       .from("messages")
       .select("role,content")
       .eq("conversation_id", conversation_id)
       .order("created_at", { ascending: true })
-      .limit(5);
+      .limit(8);
 
     if (messagesErr) {
       console.error("Error fetching messages:", messagesErr);
@@ -224,32 +317,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Build prompts
-    const systemPrompt = `You are a title generator for conversation threads.
-
-Your task: Create a short, descriptive title (3-6 words max) that captures the main topic of the conversation.
-
-Guidelines:
-- Maximum 6 words
-- Capitalize first word only (sentence case)
-- Be specific and descriptive
-- Focus on the main topic or concern
-- No quotes, punctuation, or special formatting
-- Examples: "Anxiety about job interview", "Coping with loss", "Sleep and stress management"
-
-Return ONLY the title, nothing else.`;
-
-    const userPrompt = `Generate a title for this conversation:\n\n${JSON.stringify(
-      messages,
-      null,
-      2
-    )}`;
+    // Build context snippet (prioritize user messages)
+    const snippet = buildContextSnippet(messages);
 
     console.log(
       `[generate-title] Model: ${OPENAI_TITLE_MODEL}, Mode: ${OPENAI_TITLE_API_MODE}`
     );
 
-    // Call OpenAI based on mode
+    // First attempt: Call OpenAI based on mode
     let rawTitle = "";
     let usage = null;
 
@@ -257,44 +332,89 @@ Return ONLY the title, nothing else.`;
       if (OPENAI_TITLE_API_MODE === "responses") {
         const result = await generateTitleWithResponses(
           OPENAI_TITLE_MODEL,
-          systemPrompt,
-          userPrompt
+          snippet,
+          false
         );
         rawTitle = result.title;
         usage = result.usage;
       } else {
         const result = await generateTitleWithChat(
           OPENAI_TITLE_MODEL,
-          systemPrompt,
-          userPrompt
+          snippet,
+          false
         );
         rawTitle = result.title;
         usage = result.usage;
       }
     } catch (openaiError: any) {
-      console.error("OpenAI API error:", openaiError.message);
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: "OpenAI API error",
-          details: openaiError.message,
-        }),
-        {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+      console.error("OpenAI API error (first attempt):", openaiError.message);
+      // Don't return error yet - try fallback if available
+    }
+
+    // Clean and validate title
+    let title = cleanTitle(rawTitle);
+
+    // Retry logic: If title is empty/generic, try again with stronger prompt
+    if (!title) {
+      console.log(
+        "[generate-title] First attempt yielded generic/empty title, retrying with stronger prompt..."
+      );
+
+      try {
+        if (OPENAI_TITLE_API_MODE === "responses") {
+          const result = await generateTitleWithResponses(
+            OPENAI_TITLE_MODEL,
+            snippet,
+            true
+          );
+          rawTitle = result.title;
+          usage = result.usage;
+        } else {
+          const result = await generateTitleWithChat(
+            OPENAI_TITLE_MODEL,
+            snippet,
+            true
+          );
+          rawTitle = result.title;
+          usage = result.usage;
         }
+
+        title = cleanTitle(rawTitle);
+      } catch (retryError: any) {
+        console.error("OpenAI API error (retry):", retryError.message);
+      }
+    }
+
+    // Fallback model: If still no title and fallback model is configured
+    if (!title && OPENAI_TITLE_FALLBACK_MODEL) {
+      console.log(
+        `[generate-title] Falling back to ${OPENAI_TITLE_FALLBACK_MODEL}...`
+      );
+
+      try {
+        // Fallback always uses Chat Completions (more reliable for GPT-4 models)
+        const result = await generateTitleWithChat(
+          OPENAI_TITLE_FALLBACK_MODEL,
+          snippet,
+          true
+        );
+        rawTitle = result.title;
+        usage = result.usage;
+        title = cleanTitle(rawTitle);
+      } catch (fallbackError: any) {
+        console.error("OpenAI API error (fallback):", fallbackError.message);
+      }
+    }
+
+    // Final fallback: Use generic title if all attempts failed
+    if (!title) {
+      title = "New chat";
+      console.warn(
+        "[generate-title] All attempts failed, using generic fallback"
       );
     }
 
-    // Normalize title
-    let title = normalizeTitle(rawTitle);
-
-    // Fallback if empty
-    if (!title) {
-      title = "New conversation";
-    }
-
-    console.log(`[generate-title] Raw: "${rawTitle}" → Normalized: "${title}"`);
+    console.log(`[generate-title] Raw: "${rawTitle}" → Cleaned: "${title}"`);
     if (usage) {
       console.log(`[generate-title] Usage:`, JSON.stringify(usage));
     }
@@ -331,6 +451,8 @@ Return ONLY the title, nothing else.`;
         title,
         conversation_id,
         usage,
+        model: OPENAI_TITLE_MODEL,
+        mode: OPENAI_TITLE_API_MODE,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
