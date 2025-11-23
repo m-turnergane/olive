@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "keywords": ["mcp", "mental-health", "therapist", "google-places"],
   "author": "Olive AI",

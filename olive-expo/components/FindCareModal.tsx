@@ -24,6 +24,11 @@ interface CareProvider {
   website?: string;
   url: string; // Google Maps URL
   place_id: string;
+  types?: string[];
+  location?: {
+    lat: number;
+    lng: number;
+  };
 }
 
 interface FindCareModalProps {
@@ -32,6 +37,8 @@ interface FindCareModalProps {
   providers?: CareProvider[];
   loading?: boolean;
   error?: string;
+  onRefine?: (query: string) => void;
+  userLocation?: { lat: number; lng: number };
 }
 
 const FindCareModal: React.FC<FindCareModalProps> = ({
@@ -40,6 +47,8 @@ const FindCareModal: React.FC<FindCareModalProps> = ({
   providers = [],
   loading = false,
   error,
+  onRefine,
+  userLocation,
 }) => {
   const handleCall = (phone: string) => {
     const phoneUrl = `tel:${phone.replace(/[^\d+]/g, "")}`;
@@ -53,6 +62,48 @@ const FindCareModal: React.FC<FindCareModalProps> = ({
   const handleOpenWebsite = (website: string) => {
     Linking.openURL(website);
   };
+
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number => {
+    const R = 6371; // Earth's radius in km
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in km
+  };
+
+  const getDistanceText = (provider: CareProvider): string | null => {
+    if (!userLocation || !provider.location) return null;
+    const distance = calculateDistance(
+      userLocation.lat,
+      userLocation.lng,
+      provider.location.lat,
+      provider.location.lng
+    );
+    return distance < 1
+      ? `${Math.round(distance * 1000)}m`
+      : `${distance.toFixed(1)}km`;
+  };
+
+  const refineOptions = [
+    "Therapist",
+    "Psychologist",
+    "Psychiatrist",
+    "Grief",
+    "Anxiety",
+    "Couples",
+  ];
 
   return (
     <Modal
@@ -114,10 +165,17 @@ const FindCareModal: React.FC<FindCareModalProps> = ({
                     </View>
                   </View>
 
-                  {/* Address */}
-                  <Text style={styles.address} numberOfLines={2}>
-                    {provider.address}
-                  </Text>
+                  {/* Address & Distance */}
+                  <View style={styles.addressRow}>
+                    <Text style={styles.address} numberOfLines={2}>
+                      {provider.address}
+                    </Text>
+                    {getDistanceText(provider) && (
+                      <Text style={styles.distance}>
+                        {getDistanceText(provider)}
+                      </Text>
+                    )}
+                  </View>
 
                   {/* Actions */}
                   <View style={styles.actions}>
@@ -148,6 +206,23 @@ const FindCareModal: React.FC<FindCareModalProps> = ({
                   </View>
                 </View>
               ))}
+            {/* Refine Search */}
+            {!loading && providers.length > 0 && onRefine && (
+              <View style={styles.refineContainer}>
+                <Text style={styles.refineTitle}>Refine Search:</Text>
+                <View style={styles.refineChips}>
+                  {refineOptions.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={styles.refineChip}
+                      onPress={() => onRefine(option.toLowerCase())}
+                    >
+                      <Text style={styles.refineChipText}>{option}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
           </ScrollView>
 
           {/* Footer */}
@@ -283,11 +358,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(27, 58, 47, 0.6)",
   },
+  addressRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
+    gap: 8,
+  },
   address: {
     fontSize: 14,
     color: "rgba(27, 58, 47, 0.7)",
-    marginBottom: 12,
     lineHeight: 20,
+    flex: 1,
+  },
+  distance: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#5E8C61",
+    backgroundColor: "rgba(94, 140, 97, 0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   actions: {
     flexDirection: "row",
@@ -314,6 +405,36 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "600",
+  },
+  refineContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(94, 140, 97, 0.2)",
+  },
+  refineTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1B3A2F",
+    marginBottom: 12,
+  },
+  refineChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  refineChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(94, 140, 97, 0.3)",
+  },
+  refineChipText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#5E8C61",
   },
   footer: {
     paddingHorizontal: 24,

@@ -176,9 +176,19 @@ async function callOpenAI(
 async function invokeFindCare(
   args: any,
   userLocation?: { city?: string; lat?: number; lng?: number },
-  searchRadius?: number
+  searchRadius?: number,
+  userId?: string
 ): Promise<any> {
   try {
+    // Check if MCP_FIND_CARE_URL is configured
+    if (!MCP_FIND_CARE_URL) {
+      console.error("❌ MCP_FIND_CARE_URL not configured");
+      return {
+        error: "Care provider search is not configured. Please contact support.",
+        providers: [],
+      };
+    }
+
     // Merge user preferences with tool arguments
     const mcpArgs = {
       query: args.query || "therapist mental health",
@@ -194,34 +204,95 @@ async function invokeFindCare(
     };
 
     console.log("🔍 Calling MCP find_care:", JSON.stringify(mcpArgs));
+    console.log("🔍 MCP URL:", MCP_FIND_CARE_URL);
 
-    const response = await fetch(`${MCP_FIND_CARE_URL}/invoke`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        tool: "find_care",
-        arguments: mcpArgs,
-      }),
-    });
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`MCP server error: ${response.status} - ${error}`);
+    try {
+      const response = await fetch(`${MCP_FIND_CARE_URL}/invoke`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tool: "find_care",
+          arguments: mcpArgs,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`MCP server error: ${response.status} - ${error}`);
+      }
+
+      const result = await response.json();
+      console.log(
+        "✅ MCP find_care returned:",
+        result.providers?.length || 0,
+        "providers"
+      );
+
+      // Cache geocoded coordinates if we had a city and MCP geocoded it
+      if (
+        userId &&
+        userLocation?.city &&
+        !userLocation.lat &&
+        result.geocoded_location
+      ) {
+        try {
+          const supabaseClient = createClient(
+            Deno.env.get("SUPABASE_URL")!,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+          );
+
+          await supabaseClient
+            .from("user_preferences")
+            .upsert({
+              user_id: userId,
+              data: {
+                location: {
+                  city: userLocation.city,
+                  lat: result.geocoded_location.lat,
+                  lng: result.geocoded_location.lng,
+                },
+              },
+            })
+            .eq("user_id", userId);
+
+          console.log("✅ Cached geocoded location for user");
+        } catch (cacheError) {
+          console.error("⚠️ Failed to cache geocoded location:", cacheError);
+          // Don't fail the whole request if caching fails
+        }
+      }
+
+      return result;
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      if (fetchError.name === "AbortError") {
+        console.error("❌ MCP find_care timeout after 10s");
+        return {
+          error: "The care provider search is taking too long. Please try again in a moment.",
+          providers: [],
+        };
+      }
+      
+      throw fetchError;
     }
-
-    const result = await response.json();
-    console.log(
-      "✅ MCP find_care returned:",
-      result.providers?.length || 0,
-      "providers"
-    );
-
-    return result;
-  } catch (error) {
+  } catch (error: any) {
     console.error("❌ MCP find_care error:", error);
-    throw error;
+    
+    // Return graceful error instead of throwing
+    return {
+      error: `Unable to search for care providers at this time: ${error.message || "Unknown error"}. The service may be temporarily unavailable.`,
+      providers: [],
+    };
   }
 }
 
@@ -415,7 +486,8 @@ Deno.serve(async (req) => {
                 const toolResult = await invokeFindCare(
                   toolArgs,
                   prefs?.data?.location,
-                  prefs?.data?.search_radius_km
+                  prefs?.data?.search_radius_km,
+                  user.id
                 );
 
                 // Add tool result to conversation

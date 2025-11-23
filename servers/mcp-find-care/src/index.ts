@@ -4,6 +4,11 @@
  * Exposes MCP tool via Streamable HTTP transport
  */
 
+// IMPORTANT: Load environment variables FIRST before any other imports
+import { config } from "dotenv";
+config();
+
+// Now import everything else after env vars are loaded
 import express from "express";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -13,8 +18,18 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import {
   findCareProviders,
+  findCareProvidersWithMetadata,
+  findCareProvidersWithPagination,
+  textSearch,
+  nearbySearch,
+  placeDetails,
   type FindCareParams,
   type CareProvider,
+  type TextSearchParams,
+  type NearbySearchParams,
+  type PlaceDetailsParams,
+  type CarePlace,
+  type SearchResult,
 } from "./places.js";
 
 const PORT = process.env.PORT || 3001;
@@ -46,7 +61,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "find_care",
         description:
-          "Find mental health care providers (therapists, psychiatrists, counselors) near a location, ranked by Google reviews. Use this when user asks for help finding professional care, mentions needing a therapist, or expresses interest in local mental health resources.",
+          "Find mental health care providers (therapists, psychiatrists, counselors) near a location, ranked by Google reviews. Use this when user asks for help finding professional care, mentions needing a therapist, or expresses interest in local mental health resources. Legacy interface for backward compatibility.",
         inputSchema: {
           type: "object",
           properties: {
@@ -88,19 +103,98 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: "Number of results to return (default: 5)",
               default: 5,
             },
-            open_now: {
-              type: "boolean",
-              description:
-                "Filter for currently open providers (default: false)",
-              default: false,
-            },
             min_rating: {
               type: "number",
               description: "Minimum Google rating (default: 4.3)",
               default: 4.3,
             },
+            pageToken: {
+              type: "string",
+              description: "Pagination token from previous response (optional)",
+            },
           },
           required: [],
+        },
+      },
+      {
+        name: "find_care_text",
+        description:
+          "Search for mental health care providers using text-based search with Google Places API (New) v1. Returns ranked results based on rating, reviews, distance, and mental health relevance. Supports pagination.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            reason: {
+              type: "string",
+              description:
+                'Reason or search query (e.g., "anxiety", "couples therapy", "trauma counseling"). Will be combined with mental health keywords automatically.',
+            },
+            location: {
+              type: "object",
+              properties: {
+                lat: { type: "number", description: "Latitude" },
+                lng: { type: "number", description: "Longitude" },
+              },
+              required: ["lat", "lng"],
+              description: "User location coordinates",
+            },
+            radiusMeters: {
+              type: "number",
+              description: "Search radius in meters (default: 35000)",
+              default: 35000,
+            },
+            pageToken: {
+              type: "string",
+              description: "Pagination token from previous response (optional)",
+            },
+          },
+          required: ["location"],
+        },
+      },
+      {
+        name: "find_care_nearby",
+        description:
+          "Search for healthcare facilities near a location using Google Places API (New) v1 Nearby Search. Filters results to mental health related places. Good for finding clinics, hospitals, and psychiatric facilities.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            location: {
+              type: "object",
+              properties: {
+                lat: { type: "number", description: "Latitude" },
+                lng: { type: "number", description: "Longitude" },
+              },
+              required: ["lat", "lng"],
+              description: "User location coordinates",
+            },
+            includedTypes: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                'Place types to include (e.g., ["doctor", "hospital", "psychiatric_hospital"]). Default: ["doctor", "hospital", "psychiatric_hospital"]',
+              default: ["doctor", "hospital", "psychiatric_hospital"],
+            },
+            radiusMeters: {
+              type: "number",
+              description: "Search radius in meters (default: 35000)",
+              default: 35000,
+            },
+          },
+          required: ["location"],
+        },
+      },
+      {
+        name: "place_details",
+        description:
+          "Get detailed information about a specific place using Google Places API (New) v1. Includes opening hours, full contact details, and additional metadata.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            placeId: {
+              type: "string",
+              description: "Google Place ID to fetch details for",
+            },
+          },
+          required: ["placeId"],
         },
       },
     ],
@@ -112,37 +206,84 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 // ============================================================================
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === "find_care") {
-    try {
-      const params = request.params.arguments as FindCareParams;
+  try {
+    const toolName = request.params.name;
 
-      // Call Google Places API
-      const providers = await findCareProviders(params);
+    switch (toolName) {
+      case "find_care": {
+        const params = request.params.arguments as FindCareParams;
+        const providers = await findCareProviders(params);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(providers, null, 2),
+            },
+          ],
+        };
+      }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(providers, null, 2),
-          },
-        ],
-      };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({ error: errorMessage }),
-          },
-        ],
-        isError: true,
-      };
+      case "find_care_text": {
+        const params = request.params.arguments as TextSearchParams;
+        const result = await textSearch(params);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "find_care_nearby": {
+        const params = request.params.arguments as NearbySearchParams;
+        const result = await nearbySearch(params);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "place_details": {
+        const params = request.params
+          .arguments as unknown as PlaceDetailsParams;
+        const place = await placeDetails(params);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(place, null, 2),
+            },
+          ],
+        };
+      }
+
+      default:
+        throw new Error(`Unknown tool: ${toolName}`);
     }
-  }
+  } catch (error: any) {
+    const errorResponse = {
+      error: error.message || String(error),
+      status: error.status,
+      code: error.code,
+      hint: error.hint,
+    };
 
-  throw new Error(`Unknown tool: ${request.params.name}`);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(errorResponse, null, 2),
+        },
+      ],
+      isError: true,
+    };
+  }
 });
 
 // ============================================================================
@@ -162,18 +303,45 @@ app.post("/invoke", async (req, res) => {
   try {
     const { tool, arguments: args } = req.body;
 
-    if (tool !== "find_care") {
-      return res.status(400).json({ error: `Unknown tool: ${tool}` });
+    switch (tool) {
+      case "find_care": {
+        const result = await findCareProvidersWithMetadata(
+          args as FindCareParams
+        );
+        res.json(result); // Returns { providers, geocoded_location? }
+        break;
+      }
+
+      case "find_care_text": {
+        const result = await textSearch(args as TextSearchParams);
+        res.json(result);
+        break;
+      }
+
+      case "find_care_nearby": {
+        const result = await nearbySearch(args as NearbySearchParams);
+        res.json(result);
+        break;
+      }
+
+      case "place_details": {
+        const place = await placeDetails(args as PlaceDetailsParams);
+        res.json({ place });
+        break;
+      }
+
+      default:
+        return res.status(400).json({ error: `Unknown tool: ${tool}` });
     }
-
-    // Call the tool handler
-    const providers = await findCareProviders(args as FindCareParams);
-
-    res.json({ providers });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error invoking tool:", errorMessage);
-    res.status(500).json({ error: errorMessage });
+  } catch (error: any) {
+    const errorResponse = {
+      error: error.message || String(error),
+      status: error.status,
+      code: error.code,
+      hint: error.hint,
+    };
+    console.error("Error invoking tool:", errorResponse);
+    res.status(500).json(errorResponse);
   }
 });
 

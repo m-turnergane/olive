@@ -60,6 +60,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
   const [findCareModalVisible, setFindCareModalVisible] = useState(false);
   const [careProviders, setCareProviders] = useState<any[]>([]);
   const [findCareLoading, setFindCareLoading] = useState(false);
+  const [userLocation, setUserLocation] = useState<
+    { lat: number; lng: number } | undefined
+  >();
 
   // Update conversationId when initialConversationId changes
   useEffect(() => {
@@ -67,6 +70,29 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
       setConversationId(initialConversationId);
     }
   }, [initialConversationId]);
+
+  // Load user location from preferences
+  useEffect(() => {
+    const loadUserLocation = async () => {
+      try {
+        const { data } = await supabase
+          .from("user_preferences")
+          .select("data")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (data?.data?.location) {
+          const loc = data.data.location;
+          if (loc.lat && loc.lng) {
+            setUserLocation({ lat: loc.lat, lng: loc.lng });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load user location:", error);
+      }
+    };
+    loadUserLocation();
+  }, [user.id]);
 
   /**
    * Trigger title generation for a conversation (client-side safety net)
@@ -456,6 +482,12 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
         onClose={() => setFindCareModalVisible(false)}
         providers={careProviders}
         loading={findCareLoading}
+        userLocation={userLocation}
+        onRefine={(query) => {
+          // Send a new message with the refined query
+          setInput(`Find ${query} therapist near me`);
+          setFindCareModalVisible(false);
+        }}
       />
     </>
   );
