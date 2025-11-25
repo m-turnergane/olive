@@ -210,7 +210,8 @@ export async function sendMessageStream(
   text: string,
   onToken: (token: string) => void,
   onError?: (error: Error) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { stream?: boolean }
 ): Promise<any[] | undefined> {
   try {
     // Get JWT token for authentication
@@ -234,6 +235,8 @@ export async function sendMessageStream(
       body: JSON.stringify({
         conversation_id: conversationId,
         user_text: text,
+        // Allow caller to opt out of streaming (e.g., for tool calls)
+        stream: options?.stream ?? true,
       }),
       signal,
     });

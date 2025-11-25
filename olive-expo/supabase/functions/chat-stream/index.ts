@@ -324,12 +324,14 @@ Deno.serve(async (req) => {
       }
     );
 
-    const { conversation_id, user_text } = await req.json();
+    const { conversation_id, user_text, stream } = await req.json();
     console.log(
       "🔍 Received request - conversation_id:",
       conversation_id,
       "user_text:",
-      user_text
+      user_text,
+      "stream:",
+      stream
     );
 
     // 1) Authenticate user
@@ -431,10 +433,12 @@ Deno.serve(async (req) => {
     const MAX_TOOL_LOOPS = 3;
     let finalResult: any = null;
     let toolResults: any[] = [];
+    const shouldStream =
+      typeof stream === "boolean" ? stream : CHAT_STREAM;
 
     while (toolCallLoop < MAX_TOOL_LOOPS) {
       // First call: try streaming. Subsequent calls: non-streaming for tool handling
-      const useStreaming = toolCallLoop === 0 && CHAT_STREAM;
+      const useStreaming = toolCallLoop === 0 && shouldStream;
       const result = await callOpenAI(conversationMessages, useStreaming);
 
       console.log("🔍 OpenAI result kind:", result.kind, "loop:", toolCallLoop);

@@ -204,6 +204,24 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
     setInput("");
     setIsLoading(true);
 
+    // Heuristic: bypass streaming when user likely wants care search (tool call)
+    const lowerText = userText.toLowerCase();
+    const isCareIntent =
+      lowerText.includes("therap") ||
+      lowerText.includes("psychiat") ||
+      lowerText.includes("doctor") ||
+      lowerText.includes("counsel") ||
+      lowerText.includes("find care") ||
+      lowerText.includes("provider") ||
+      lowerText.includes("clinic");
+
+    if (isCareIntent) {
+      // Show modal in loading state immediately for better UX
+      setCareProviders([]);
+      setFindCareLoading(true);
+      setFindCareModalVisible(true);
+    }
+
     try {
       // 1. Create conversation on first send
       let currentConversationId = conversationId;
@@ -266,7 +284,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
             text: "Sorry, I encountered an error. Please try again.",
           };
           setMessages((prev) => [...prev, errorMessage]);
-        }
+        },
+        undefined,
+        { stream: !isCareIntent }
       );
 
       // Handle tool results (e.g., find_care)
@@ -275,8 +295,12 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
           if (toolResult.tool === "find_care" && toolResult.result?.providers) {
             setCareProviders(toolResult.result.providers);
             setFindCareModalVisible(true);
+            setFindCareLoading(false);
           }
         }
+      } else if (isCareIntent) {
+        // If we expected care results but got none, clear loading state
+        setFindCareLoading(false);
       }
 
       // 5. Stream complete - persist and add full assistant message to history
@@ -336,6 +360,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
       setIsLoading(false);
       setIsStreaming(false);
       setStreamingText("");
+      setFindCareLoading(false);
     }
   };
 

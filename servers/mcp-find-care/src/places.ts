@@ -343,7 +343,8 @@ export async function textSearch(
         radius: radiusMeters,
       },
     },
-    rankPreference: "POPULARITY",
+    // Text Search supports RELEVANCE or DISTANCE; POPULARITY is invalid here
+    rankPreference: "RELEVANCE",
     openNow: false,
     strictTypeFiltering: false,
     maxResultCount: PLACES_MAX_RESULTS,
