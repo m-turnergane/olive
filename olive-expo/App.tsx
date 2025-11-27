@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Animated, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from './components/LoginScreen';
 import MainScreen from './components/MainScreen';
 import DisclaimerModal from './components/DisclaimerModal';
+import OnboardingFlow from './components/OnboardingFlow';
 import { User } from './types';
 import * as supabaseService from './services/supabaseService';
+import { supabase } from './services/supabaseService';
 
-type Screen = 'splash' | 'login' | 'main';
+type Screen = 'splash' | 'login' | 'onboarding' | 'main';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('splash');
@@ -33,6 +35,65 @@ export default function App() {
     }).start();
   }, [screen]);
 
+  const checkOnboardingAndDisclaimer = async (currentUser: User) => {
+    try {
+      // Ensure we have a valid session before querying
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData?.session;
+      
+      if (!session) {
+        if (__DEV__) {
+          console.log('[Onboarding] No session found, showing onboarding');
+        }
+        setScreen('onboarding');
+        return;
+      }
+
+      // Use the authenticated user's ID from the session to ensure RLS works
+      const authenticatedUserId = session.user.id;
+      
+      if (__DEV__) {
+        console.log('[Onboarding] Session user ID:', authenticatedUserId);
+        console.log('[Onboarding] Passed user ID:', currentUser.id);
+      }
+
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .select('data')
+        .eq('user_id', authenticatedUserId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.warn('Error checking onboarding status:', error);
+      }
+
+      const prefsData = data?.data || {};
+      const onboardingCompleted = prefsData.onboardingCompleted === true;
+
+      if (__DEV__) {
+        console.log('[Onboarding] Preferences found:', !!data);
+        console.log('[Onboarding] Completed flag:', onboardingCompleted);
+      }
+
+      if (!onboardingCompleted) {
+        setScreen('onboarding');
+        return;
+      }
+
+      const hasSeenDisclaimer = await AsyncStorage.getItem('hasSeenDisclaimer');
+      if (!hasSeenDisclaimer) {
+        setShowDisclaimer(true);
+        setScreen('main');
+      } else {
+        setScreen('main');
+      }
+    } catch (error) {
+      console.error('Error checking onboarding/disclaimer:', error);
+      // On error, go to main screen (don't block user)
+      setScreen('main');
+    }
+  };
+
   const initializeApp = async () => {
     try {
       // Check if user has an active session
@@ -44,14 +105,7 @@ export default function App() {
         if (currentUser) {
           setUser(currentUser);
           setIsAuthenticated(true);
-          
-          // Check if disclaimer has been shown
-          const hasSeenDisclaimer = await AsyncStorage.getItem('hasSeenDisclaimer');
-          if (!hasSeenDisclaimer) {
-            setShowDisclaimer(true);
-          } else {
-            setScreen('main');
-          }
+          await checkOnboardingAndDisclaimer(currentUser);
         } else {
           setScreen('login');
         }
@@ -71,18 +125,16 @@ export default function App() {
     }
   };
 
-  const handleLogin = (loggedInUser: User) => {
+  const handleLogin = async (loggedInUser: User) => {
     setUser(loggedInUser);
     setIsAuthenticated(true);
-    
-    // Check disclaimer
-    AsyncStorage.getItem('hasSeenDisclaimer').then((value) => {
-      if (!value) {
-        setShowDisclaimer(true);
-      } else {
-        setScreen('main');
-      }
-    });
+
+    // Small delay to ensure session is fully propagated
+    // This helps with timing issues after OAuth completes
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Check onboarding/disclaimer
+    await checkOnboardingAndDisclaimer(loggedInUser);
   };
 
   const handleLogout = async () => {
@@ -109,6 +161,49 @@ export default function App() {
     }
   };
 
+  const handleOnboardingComplete = async () => {
+    const hasSeenDisclaimer = await AsyncStorage.getItem('hasSeenDisclaimer');
+    if (!hasSeenDisclaimer) {
+      setShowDisclaimer(true);
+      setScreen('main');
+    } else {
+      setScreen('main');
+    }
+  };
+
+  const handleOnboardingSkip = async () => {
+    try {
+      if (user) {
+        const { data, error } = await supabase
+          .from('user_preferences')
+          .select('data')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        const existingData = data?.data || {};
+
+        const { error: upsertError } = await supabase.from('user_preferences').upsert({
+          user_id: user.id,
+          data: {
+            ...existingData,
+            onboardingCompleted: true,
+          },
+          updated_at: new Date().toISOString(),
+        });
+
+        if (upsertError) {
+          throw upsertError;
+        }
+      }
+    } catch (error) {
+      console.error('Error skipping onboarding:', error);
+      Alert.alert('Unable to skip', 'Something went wrong. Please try again.');
+      return;
+    }
+
+    handleOnboardingComplete();
+  };
+
   const renderScreen = () => {
     switch (screen) {
       case 'splash':
@@ -122,6 +217,23 @@ export default function App() {
         return (
           <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
             <LoginScreen onLogin={handleLogin} />
+          </Animated.View>
+        );
+      case 'onboarding':
+        if (!user) {
+          return (
+            <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+              <LoginScreen onLogin={handleLogin} />
+            </Animated.View>
+          );
+        }
+        return (
+          <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+            <OnboardingFlow
+              user={user}
+              onComplete={handleOnboardingComplete}
+              onSkip={handleOnboardingSkip}
+            />
           </Animated.View>
         );
       case 'main':

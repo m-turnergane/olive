@@ -1,44 +1,16 @@
-import "react-native-url-polyfill/auto";
-import {
-  createClient,
-  AuthError,
-  User as SupabaseAuthUser,
-} from "@supabase/supabase-js";
-import * as SecureStore from "expo-secure-store";
+import { AuthError, User as SupabaseAuthUser } from "@supabase/supabase-js";
 import { makeRedirectUri } from "expo-auth-session";
 import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
 import { User } from "../types";
 
+// Import the shared supabase client - MUST use the same instance across the app
+// to ensure session state is shared (e.g., after Google OAuth sets the session)
+import { supabase } from "../lib/supabase";
+export { supabase };
+
 // Ensure the WebBrowser auth session is properly completed on iOS
 WebBrowser.maybeCompleteAuthSession();
-
-// Get environment variables
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
-
-// Custom storage adapter for React Native using expo-secure-store
-const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => {
-    return SecureStore.getItemAsync(key);
-  },
-  setItem: (key: string, value: string) => {
-    SecureStore.setItemAsync(key, value);
-  },
-  removeItem: (key: string) => {
-    SecureStore.deleteItemAsync(key);
-  },
-};
-
-// Initialize Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: ExpoSecureStoreAdapter as any,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
 
 const getProjectNameForProxy = (): string | undefined => {
   const envOverride = process.env.EXPO_PUBLIC_PROJECT_NAME_FOR_PROXY;
@@ -300,8 +272,33 @@ export const signInWithEmail = async (
         .eq("id", data.user.id)
         .single();
 
-      if (fetchError) {
+      if (fetchError && fetchError.code !== "PGRST116") {
+        // Only log unexpected errors, not "user doesn't exist"
         console.error("Error fetching user data:", fetchError);
+      }
+
+      // If user doesn't exist in public.users, create them
+      if (fetchError?.code === "PGRST116") {
+        const name =
+          data.user.user_metadata?.name ||
+          data.user.email?.split("@")[0] ||
+          "User";
+        const photoUrl = `https://api.dicebear.com/7.x/initials/png?seed=${name}`;
+
+        const profileData = await ensureUserProfile({
+          email: data.user.email!,
+          name,
+          photoUrl,
+        });
+
+        const user: User = {
+          id: data.user.id,
+          email: data.user.email!,
+          name: profileData?.name || name,
+          photoUrl: profileData?.photo_url || photoUrl,
+        };
+
+        return { user, error: null };
       }
 
       const user: User = {
@@ -635,8 +632,37 @@ export const getCurrentUser = async (): Promise<{
       .eq("id", authUser.id)
       .single();
 
-    if (fetchError) {
+    if (fetchError && fetchError.code !== "PGRST116") {
+      // Only log unexpected errors, not "user doesn't exist"
       console.error("Error fetching user data:", fetchError);
+    }
+
+    // If user doesn't exist in public.users, try to create them
+    if (fetchError?.code === "PGRST116") {
+      const name =
+        authUser.user_metadata?.name ||
+        authUser.user_metadata?.full_name ||
+        authUser.email?.split("@")[0] ||
+        "User";
+      const photoUrl =
+        authUser.user_metadata?.avatar_url ||
+        authUser.user_metadata?.picture ||
+        `https://api.dicebear.com/7.x/initials/png?seed=${authUser.email}`;
+
+      const profileData = await ensureUserProfile({
+        email: authUser.email!,
+        name,
+        photoUrl,
+      });
+
+      const user: User = {
+        id: authUser.id,
+        email: authUser.email!,
+        name: profileData?.name || name,
+        photoUrl: profileData?.photo_url || photoUrl,
+      };
+
+      return { user, error: null };
     }
 
     const user: User = {
