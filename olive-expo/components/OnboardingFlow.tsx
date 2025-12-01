@@ -15,7 +15,7 @@ import {
 import { User } from "../types";
 import { supabase } from "../services/supabaseService";
 import { LinearGradient } from "expo-linear-gradient";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface OnboardingFlowProps {
   user: User;
@@ -23,6 +23,7 @@ interface OnboardingFlowProps {
   onSkip?: () => void;
 }
 
+// ... [Keep types as is] ...
 type Tone = "casual" | "professional" | "supportive";
 type ToneMode = "calm" | "motivational" | "grounding";
 type AgeRange = "18-24" | "25-34" | "35-49" | "50+" | undefined;
@@ -149,6 +150,7 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const heroLine1 = useRef(new Animated.Value(0)).current;
   const heroLine2 = useRef(new Animated.Value(0)).current;
   const heroLine3 = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
 
   const firstName = useMemo(
     () => (user?.name || "").split(" ")[0] || "there",
@@ -665,148 +667,148 @@ const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const isLastStep = step === steps.length - 1;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <LinearGradient colors={["#BAC7B2", "#F0F4F1"]} style={styles.gradient}>
-        <View style={styles.container}>
-          <View style={styles.headerRow}>
-            <View style={styles.progressDots}>
-              {steps.map((_, idx) => (
-                <View
-                  key={idx}
-                  style={[
-                    styles.dot,
-                    idx === step && styles.dotActive,
-                    idx < step && styles.dotDone,
-                  ]}
-                />
-              ))}
-            </View>
-            {onSkip ? (
-              <TouchableOpacity
-                onPress={handleSkip}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={styles.skipText}>Skip for now</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-
-          <Animated.View
-            key={step}
-            style={[
-              styles.contentContainer,
-              {
-                opacity: transition,
-                transform: [
-                  {
-                    translateY: transition.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [10, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={[styles.title, step === 0 && styles.centerText]}>
-                {steps[step].title}
-              </Text>
-              {step === 0 ? (
-                <View>
-                  <Animated.Text
-                    style={[
-                      styles.helper,
-                      styles.centerText,
-                      { opacity: heroLine1 },
-                    ]}
-                  >
-                    Olive is here to support you. We’ll take under a minute to
-                    tailor how Olive greets and supports you.
-                  </Animated.Text>
-                  <Animated.View style={{ opacity: heroLine2 }}>
-                    <View style={[styles.infoBox, styles.centerBox]}>
-                      <Text style={[styles.infoText, styles.centerText]}>
-                        Your responses stay private and only shape how Olive
-                        speaks with you.
-                      </Text>
-                    </View>
-                  </Animated.View>
-                  <Animated.View style={{ opacity: heroLine3 }}>
-                    <View style={styles.sectionSpacing} />
-                  </Animated.View>
-                </View>
-              ) : (
-                steps[step].body
-              )}
-            </ScrollView>
-          </Animated.View>
-
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[
-                styles.secondaryButton,
-                step === 0 && styles.secondaryButtonDisabled,
-              ]}
-              onPress={goBack}
-              disabled={step === 0 || isSaving}
-              activeOpacity={0.9}
-            >
-              <Text
+    <LinearGradient colors={["#BAC7B2", "#F0F4F1"]} style={styles.gradient}>
+      <View
+        style={[
+          styles.container,
+          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 },
+        ]}
+      >
+        <View style={styles.headerRow}>
+          <View style={styles.progressDots}>
+            {steps.map((_, idx) => (
+              <View
+                key={idx}
                 style={[
-                  styles.secondaryButtonText,
-                  step === 0 && styles.secondaryButtonTextDisabled,
+                  styles.dot,
+                  idx === step && styles.dotActive,
+                  idx < step && styles.dotDone,
                 ]}
-              >
-                Back
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                isSaving && styles.primaryButtonDisabled,
-              ]}
-              onPress={() => {
-                if (isLastStep) {
-                  handleSave();
-                } else {
-                  goNext();
-                }
-              }}
-              disabled={isSaving}
-              activeOpacity={0.9}
-            >
-              {isSaving ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.primaryButtonText}>
-                  {isLastStep ? "Finish" : "Next"}
-                </Text>
-              )}
-            </TouchableOpacity>
+              />
+            ))}
           </View>
+          {onSkip ? (
+            <TouchableOpacity
+              onPress={handleSkip}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.skipText}>Skip for now</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-      </LinearGradient>
-    </SafeAreaView>
+
+        <Animated.View
+          key={step}
+          style={[
+            styles.contentContainer,
+            {
+              opacity: transition,
+              transform: [
+                {
+                  translateY: transition.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [10, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[styles.title, step === 0 && styles.centerText]}>
+              {steps[step].title}
+            </Text>
+            {step === 0 ? (
+              <View>
+                <Animated.Text
+                  style={[
+                    styles.helper,
+                    styles.centerText,
+                    { opacity: heroLine1 },
+                  ]}
+                >
+                  Olive is here to support you. We’ll take under a minute to
+                  tailor how Olive greets and supports you.
+                </Animated.Text>
+                <Animated.View style={{ opacity: heroLine2 }}>
+                  <View style={[styles.infoBox, styles.centerBox]}>
+                    <Text style={[styles.infoText, styles.centerText]}>
+                      Your responses stay private and only shape how Olive
+                      speaks with you.
+                    </Text>
+                  </View>
+                </Animated.View>
+                <Animated.View style={{ opacity: heroLine3 }}>
+                  <View style={styles.sectionSpacing} />
+                </Animated.View>
+              </View>
+            ) : (
+              steps[step].body
+            )}
+          </ScrollView>
+        </Animated.View>
+
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={[
+              styles.secondaryButton,
+              step === 0 && styles.secondaryButtonDisabled,
+            ]}
+            onPress={goBack}
+            disabled={step === 0 || isSaving}
+            activeOpacity={0.9}
+          >
+            <Text
+              style={[
+                styles.secondaryButtonText,
+                step === 0 && styles.secondaryButtonTextDisabled,
+              ]}
+            >
+              Back
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.primaryButton,
+              isSaving && styles.primaryButtonDisabled,
+            ]}
+            onPress={() => {
+              if (isLastStep) {
+                handleSave();
+              } else {
+                goNext();
+              }
+            }}
+            disabled={isSaving}
+            activeOpacity={0.9}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {isLastStep ? "Finish" : "Next"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#BAC7B2",
-  },
   gradient: {
     flex: 1,
   },
+  // removed safeArea style as we use manual padding
   container: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 8,
+    // paddingTop handled inline via insets
   },
   scroll: {
     flex: 1,

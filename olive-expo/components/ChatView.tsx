@@ -8,7 +8,6 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Animated,
   Alert,
 } from "react-native";
@@ -25,6 +24,8 @@ import {
 } from "../services/chatService";
 import { supabase } from "../services/supabaseService";
 import FindCareModal from "./FindCareModal";
+import ThinkingIndicator from "./ThinkingIndicator";
+import { getThinkingText } from "../utils/thinkingText";
 
 interface ChatViewProps {
   user: User;
@@ -52,6 +53,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [isAssistantThinking, setIsAssistantThinking] = useState(false);
+  const [thinkingText, setThinkingText] = useState("");
+  const [thinkingVersion, setThinkingVersion] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const welcomeOpacity = useRef(new Animated.Value(1)).current;
   const hasTitleGenerationAttempted = useRef<Set<string>>(new Set());
@@ -203,17 +207,27 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
     const userText = input.trim();
     setInput("");
     setIsLoading(true);
+    setThinkingText(getThinkingText(userText));
+    setIsAssistantThinking(true);
+    setThinkingVersion((prev) => prev + 1);
 
     // Heuristic: bypass streaming when user likely wants care search (tool call)
     const lowerText = userText.toLowerCase();
-    const isCareIntent =
-      lowerText.includes("therap") ||
-      lowerText.includes("psychiat") ||
-      lowerText.includes("doctor") ||
-      lowerText.includes("counsel") ||
-      lowerText.includes("find care") ||
-      lowerText.includes("provider") ||
-      lowerText.includes("clinic");
+    const careKeywords = [
+      "therap",
+      "psychiat",
+      "doctor",
+      "counsel",
+      "find care",
+      "provider",
+      "clinic",
+      "search",
+      "find",
+      "looking for",
+      "near me",
+      "recommend",
+    ];
+    const isCareIntent = careKeywords.some((kw) => lowerText.includes(kw));
 
     if (isCareIntent) {
       // Show modal in loading state immediately for better UX
@@ -256,6 +270,9 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
         };
         setMessages((prev) => [...prev, deflectionMessage]);
         setIsLoading(false);
+        setIsAssistantThinking(false);
+        setFindCareLoading(false); // Reset if we guessed wrong
+        setFindCareModalVisible(false);
         return;
       }
 
@@ -272,6 +289,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
         // onToken callback - append each token
         (token: string) => {
           fullAssistantResponse += token;
+          setIsAssistantThinking(false);
           setStreamingText((prev) => prev + token);
         },
         // onError callback
@@ -279,6 +297,8 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
           console.error("Streaming error:", error);
           setIsStreaming(false);
           setStreamingText("");
+          setIsAssistantThinking(false);
+          setFindCareLoading(false);
           const errorMessage: DisplayMessage = {
             role: "system",
             text: "Sorry, I encountered an error. Please try again.",
@@ -296,16 +316,29 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
             setCareProviders(toolResult.result.providers);
             setFindCareModalVisible(true);
             setFindCareLoading(false);
+
+            // If the model didn't generate text (just tool), add a synthetic message
+            if (!fullAssistantResponse) {
+              const syntheticResponse =
+                "I've found some care providers near you based on your request.";
+              fullAssistantResponse = syntheticResponse;
+              setStreamingText(syntheticResponse);
+            }
           }
         }
       } else if (isCareIntent) {
         // If we expected care results but got none, clear loading state
+        // And allow the text response (if any) to stand
         setFindCareLoading(false);
+        // Maybe keep modal open but show "No results"? Or close it?
+        // For now, let the user see the text response.
+        // Ideally the model says "I couldn't find any..."
       }
 
       // 5. Stream complete - persist and add full assistant message to history
       setIsStreaming(false);
       setStreamingText("");
+      setIsAssistantThinking(false);
 
       if (fullAssistantResponse.trim()) {
         const assistantMessage: DisplayMessage = {
@@ -346,8 +379,6 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
           }
         } catch (error) {
           console.error("Failed to persist assistant message:", error);
-          // Message is still in UI, so user can see it
-          // But it won't be in history on reload
         }
       }
     } catch (error) {
@@ -361,6 +392,7 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
       setIsStreaming(false);
       setStreamingText("");
       setFindCareLoading(false);
+      setIsAssistantThinking(false);
     }
   };
 
@@ -456,17 +488,21 @@ const ChatView: React.FC<ChatViewProps> = ({ user, initialConversationId }) => {
                   </View>
                 </View>
               )}
-              {/* Show loading indicator when checking scope or initializing */}
-              {(isLoading || (isStreaming && !streamingText)) && (
+              {isAssistantThinking && (
                 <View
                   style={[
                     styles.messageContainer,
                     styles.modelMessageContainer,
                   ]}
                 >
-                  <View style={[styles.messageBubble, styles.modelBubble]}>
-                    <ActivityIndicator color="#1B3A2F" />
-                  </View>
+                  <ThinkingIndicator
+                    key={`thinking-${thinkingVersion}`}
+                    text={
+                      thinkingText ||
+                      "Considering how to respond in a caring way..."
+                    }
+                    containerStyle={{ marginBottom: 0 }}
+                  />
                 </View>
               )}
             </>

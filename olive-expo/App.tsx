@@ -1,19 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Animated, Alert } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import LoginScreen from './components/LoginScreen';
-import MainScreen from './components/MainScreen';
-import DisclaimerModal from './components/DisclaimerModal';
-import OnboardingFlow from './components/OnboardingFlow';
-import { User } from './types';
-import * as supabaseService from './services/supabaseService';
-import { supabase } from './services/supabaseService';
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useState, useRef } from "react";
+import {
+  StyleSheet,
+  View,
+  Animated,
+  ActivityIndicator,
+  Text,
+  Alert,
+} from "react-native";
+import { supabase } from "./services/supabaseService";
+import { User } from "./types";
+import LoginScreen from "./components/LoginScreen";
+import OnboardingFlow from "./components/OnboardingFlow";
+import MainScreen from "./components/MainScreen";
+import DisclaimerModal from "./components/DisclaimerModal";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as supabaseService from "./services/supabaseService";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
-type Screen = 'splash' | 'login' | 'onboarding' | 'main';
+type Screen = "splash" | "login" | "onboarding" | "main";
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('splash');
+  const [screen, setScreen] = useState<Screen>("splash");
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
@@ -40,57 +48,57 @@ export default function App() {
       // Ensure we have a valid session before querying
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData?.session;
-      
+
       if (!session) {
         if (__DEV__) {
-          console.log('[Onboarding] No session found, showing onboarding');
+          console.log("[Onboarding] No session found, showing onboarding");
         }
-        setScreen('onboarding');
+        setScreen("onboarding");
         return;
       }
 
       // Use the authenticated user's ID from the session to ensure RLS works
       const authenticatedUserId = session.user.id;
-      
+
       if (__DEV__) {
-        console.log('[Onboarding] Session user ID:', authenticatedUserId);
-        console.log('[Onboarding] Passed user ID:', currentUser.id);
+        console.log("[Onboarding] Session user ID:", authenticatedUserId);
+        console.log("[Onboarding] Passed user ID:", currentUser.id);
       }
 
       const { data, error } = await supabase
-        .from('user_preferences')
-        .select('data')
-        .eq('user_id', authenticatedUserId)
+        .from("user_preferences")
+        .select("data")
+        .eq("user_id", authenticatedUserId)
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        console.warn('Error checking onboarding status:', error);
+      if (error && error.code !== "PGRST116") {
+        console.warn("Error checking onboarding status:", error);
       }
 
       const prefsData = data?.data || {};
       const onboardingCompleted = prefsData.onboardingCompleted === true;
 
       if (__DEV__) {
-        console.log('[Onboarding] Preferences found:', !!data);
-        console.log('[Onboarding] Completed flag:', onboardingCompleted);
+        console.log("[Onboarding] Preferences found:", !!data);
+        console.log("[Onboarding] Completed flag:", onboardingCompleted);
       }
 
       if (!onboardingCompleted) {
-        setScreen('onboarding');
+        setScreen("onboarding");
         return;
       }
 
-      const hasSeenDisclaimer = await AsyncStorage.getItem('hasSeenDisclaimer');
+      const hasSeenDisclaimer = await AsyncStorage.getItem("hasSeenDisclaimer");
       if (!hasSeenDisclaimer) {
         setShowDisclaimer(true);
-        setScreen('main');
+        setScreen("main");
       } else {
-        setScreen('main');
+        setScreen("main");
       }
     } catch (error) {
-      console.error('Error checking onboarding/disclaimer:', error);
+      console.error("Error checking onboarding/disclaimer:", error);
       // On error, go to main screen (don't block user)
-      setScreen('main');
+      setScreen("main");
     }
   };
 
@@ -98,7 +106,7 @@ export default function App() {
     try {
       // Check if user has an active session
       const { session } = await supabaseService.getSession();
-      
+
       if (session) {
         // User is logged in, get user data
         const { user: currentUser } = await supabaseService.getCurrentUser();
@@ -107,18 +115,18 @@ export default function App() {
           setIsAuthenticated(true);
           await checkOnboardingAndDisclaimer(currentUser);
         } else {
-          setScreen('login');
+          setScreen("login");
         }
       } else {
         // No active session, show login
         setTimeout(() => {
-          setScreen('login');
+          setScreen("login");
         }, 2000); // Show splash for 2 seconds
       }
     } catch (error) {
-      console.error('Error initializing app:', error);
+      console.error("Error initializing app:", error);
       setTimeout(() => {
-        setScreen('login');
+        setScreen("login");
       }, 2000);
     } finally {
       setIsLoading(false);
@@ -131,7 +139,7 @@ export default function App() {
 
     // Small delay to ensure session is fully propagated
     // This helps with timing issues after OAuth completes
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Check onboarding/disclaimer
     await checkOnboardingAndDisclaimer(loggedInUser);
@@ -143,31 +151,31 @@ export default function App() {
       setUser(null);
       setIsAuthenticated(false);
       await AsyncStorage.clear();
-      setScreen('login');
+      setScreen("login");
     } catch (error) {
-      console.error('Error logging out:', error);
+      console.error("Error logging out:", error);
     }
   };
 
   const handleAcceptDisclaimer = async () => {
     try {
-      await AsyncStorage.setItem('hasSeenDisclaimer', 'true');
+      await AsyncStorage.setItem("hasSeenDisclaimer", "true");
       setShowDisclaimer(false);
-      setScreen('main');
+      setScreen("main");
     } catch (error) {
-      console.error('Error saving disclaimer state:', error);
+      console.error("Error saving disclaimer state:", error);
       setShowDisclaimer(false);
-      setScreen('main');
+      setScreen("main");
     }
   };
 
   const handleOnboardingComplete = async () => {
-    const hasSeenDisclaimer = await AsyncStorage.getItem('hasSeenDisclaimer');
+    const hasSeenDisclaimer = await AsyncStorage.getItem("hasSeenDisclaimer");
     if (!hasSeenDisclaimer) {
       setShowDisclaimer(true);
-      setScreen('main');
+      setScreen("main");
     } else {
-      setScreen('main');
+      setScreen("main");
     }
   };
 
@@ -175,29 +183,31 @@ export default function App() {
     try {
       if (user) {
         const { data, error } = await supabase
-          .from('user_preferences')
-          .select('data')
-          .eq('user_id', user.id)
+          .from("user_preferences")
+          .select("data")
+          .eq("user_id", user.id)
           .maybeSingle();
 
         const existingData = data?.data || {};
 
-        const { error: upsertError } = await supabase.from('user_preferences').upsert({
-          user_id: user.id,
-          data: {
-            ...existingData,
-            onboardingCompleted: true,
-          },
-          updated_at: new Date().toISOString(),
-        });
+        const { error: upsertError } = await supabase
+          .from("user_preferences")
+          .upsert({
+            user_id: user.id,
+            data: {
+              ...existingData,
+              onboardingCompleted: true,
+            },
+            updated_at: new Date().toISOString(),
+          });
 
         if (upsertError) {
           throw upsertError;
         }
       }
     } catch (error) {
-      console.error('Error skipping onboarding:', error);
-      Alert.alert('Unable to skip', 'Something went wrong. Please try again.');
+      console.error("Error skipping onboarding:", error);
+      Alert.alert("Unable to skip", "Something went wrong. Please try again.");
       return;
     }
 
@@ -206,29 +216,43 @@ export default function App() {
 
   const renderScreen = () => {
     switch (screen) {
-      case 'splash':
+      case "splash":
         return (
-          <Animated.View style={[styles.splashContainer, { opacity: fadeAnim }]}>
+          <Animated.View
+            style={[styles.splashContainer, { opacity: fadeAnim }]}
+          >
             <Text style={styles.splashText}>Olive</Text>
-            {isLoading && <ActivityIndicator size="large" color="#1B3A2F" style={styles.loader} />}
+            {isLoading && (
+              <ActivityIndicator
+                size="large"
+                color="#1B3A2F"
+                style={styles.loader}
+              />
+            )}
           </Animated.View>
         );
-      case 'login':
+      case "login":
         return (
-          <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+          <Animated.View
+            style={[styles.screenContainer, { opacity: fadeAnim }]}
+          >
             <LoginScreen onLogin={handleLogin} />
           </Animated.View>
         );
-      case 'onboarding':
+      case "onboarding":
         if (!user) {
           return (
-            <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+            <Animated.View
+              style={[styles.screenContainer, { opacity: fadeAnim }]}
+            >
               <LoginScreen onLogin={handleLogin} />
             </Animated.View>
           );
         }
         return (
-          <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+          <Animated.View
+            style={[styles.screenContainer, { opacity: fadeAnim }]}
+          >
             <OnboardingFlow
               user={user}
               onComplete={handleOnboardingComplete}
@@ -236,22 +260,28 @@ export default function App() {
             />
           </Animated.View>
         );
-      case 'main':
+      case "main":
         if (!user) {
           return (
-            <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+            <Animated.View
+              style={[styles.screenContainer, { opacity: fadeAnim }]}
+            >
               <LoginScreen onLogin={handleLogin} />
             </Animated.View>
           );
         }
         return (
-          <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+          <Animated.View
+            style={[styles.screenContainer, { opacity: fadeAnim }]}
+          >
             <MainScreen user={user} onLogout={handleLogout} />
           </Animated.View>
         );
       default:
         return (
-          <Animated.View style={[styles.screenContainer, { opacity: fadeAnim }]}>
+          <Animated.View
+            style={[styles.screenContainer, { opacity: fadeAnim }]}
+          >
             <LoginScreen onLogin={handleLogin} />
           </Animated.View>
         );
@@ -259,11 +289,16 @@ export default function App() {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="dark" />
-      {renderScreen()}
-      <DisclaimerModal isOpen={showDisclaimer} onAccept={handleAcceptDisclaimer} />
-    </View>
+    <SafeAreaProvider>
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        {renderScreen()}
+        <DisclaimerModal
+          isOpen={showDisclaimer}
+          onAccept={handleAcceptDisclaimer}
+        />
+      </View>
+    </SafeAreaProvider>
   );
 }
 
@@ -276,15 +311,15 @@ const styles = StyleSheet.create({
   },
   splashContainer: {
     flex: 1,
-    backgroundColor: '#BAC7B2',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#BAC7B2",
+    justifyContent: "center",
+    alignItems: "center",
   },
   splashText: {
     fontSize: 48,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     letterSpacing: 8,
-    color: '#1B3A2F',
+    color: "#1B3A2F",
   },
   loader: {
     marginTop: 32,
